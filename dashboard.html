@@ -82,7 +82,7 @@
   }
 </style>
 </head>
-<body>
+<body style="visibility:hidden;">
 
 <!-- Nav -->
 <nav class="topnav">
@@ -219,7 +219,11 @@ async function loadDashboard() {
   try {
     var sess = await sb.auth.getSession();
     var user = sess.data && sess.data.session ? sess.data.session.user : null;
-    if (!user) { window.location.href = '/Opti-eye-care/index.html'; return; }
+    if (!user) {
+      window.location.replace('/Opti-eye-care/index.html');
+      return;
+    }
+    document.body.style.visibility = 'visible';
 
     document.getElementById('navEmail').textContent = user.email || '';
 
@@ -290,6 +294,12 @@ async function signOut() {
   window.location.href = '/Opti-eye-care/index.html';
 }
 
+// Instant redirect if no session — don't wait for loadDashboard
+sb.auth.getSession().then(function(r) {
+  if (!r.data || !r.data.session) {
+    window.location.replace('/Opti-eye-care/index.html');
+  }
+});
 loadDashboard();
 </script>
 </body>
