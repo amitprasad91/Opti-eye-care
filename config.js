@@ -5,4 +5,4 @@
 // ============================================================
 
 var SUPABASE_URL     = 'https://peshaumlajgptocjsaqr.supabase.co';
-var SUPABASE_ANON_KEY = 'YOUR_PUBLISHABLE_KEY_HERE';
+var SUPABASE_ANON_KEY = 'sb_publishable_HKqpF6z2e33R3AmETOAQ2w_EivodhoF';
