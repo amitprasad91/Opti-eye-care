@@ -999,7 +999,7 @@ function toggleConsent(cardId,cbId){var cb=document.getElementById(cbId);if(!cb)
 function updateCTA(){var c1=document.getElementById('c1'),c2=document.getElementById('c2'),btn=document.getElementById('ctaBtn');if(btn)btn.disabled=!(c1&&c1.checked&&c2&&c2.checked);}
 
 async function checkSession(){
-  try{var r=await sb.auth.getSession();if(r.data&&r.data.session)window.location.href='dashboard.html';}catch(e){}
+  try{var r=await sb.auth.getSession();if(r.data&&r.data.session)window.location.href='/Opti-eye-care/dashboard.html';}catch(e){}
 }
 
 buildSidebar();
