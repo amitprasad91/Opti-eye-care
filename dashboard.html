@@ -219,7 +219,7 @@ async function loadDashboard() {
   try {
     var sess = await sb.auth.getSession();
     var user = sess.data && sess.data.session ? sess.data.session.user : null;
-    if (!user) { window.location.href = 'optireg-phase2.html'; return; }
+    if (!user) { window.location.href = '/Opti-eye-care/index.html'; return; }
 
     document.getElementById('navEmail').textContent = user.email || '';
 
@@ -287,7 +287,7 @@ async function loadDashboard() {
 
 async function signOut() {
   await sb.auth.signOut();
-  window.location.href = 'optireg-phase2.html';
+  window.location.href = '/Opti-eye-care/index.html';
 }
 
 loadDashboard();
