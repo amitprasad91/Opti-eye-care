@@ -574,7 +574,7 @@
 
       <div class="nav-row">
         <button class="btn-back" onclick="goTo(1)">← Back</button>
-        <button class="btn-next" onclick="goTo(3)">Continue →</button>
+        <button class="btn-next" onclick="validateStep2()">Continue →</button>
       </div>
     </div>
 
@@ -601,7 +601,7 @@
 
       <div class="nav-row">
         <button class="btn-back" onclick="goTo(2)">← Back</button>
-        <button class="btn-next" onclick="goTo(4)">Continue →</button>
+        <button class="btn-next" onclick="validateStep3()">Continue →</button>
       </div>
     </div>
 
@@ -640,7 +640,7 @@
 
       <div class="nav-row">
         <button class="btn-back" onclick="goTo(3)">← Back</button>
-        <button class="btn-next" onclick="goTo(5)">Continue →</button>
+        <button class="btn-next" onclick="validateStep4()">Continue →</button>
       </div>
     </div>
 
@@ -976,7 +976,7 @@ async function submitRegistration(){
     var ptMap={'Hospital':'hospital','Private clinic':'clinic','Optical store':'optical','Academic institution':'academic'};
     var lc=document.querySelector('[name="pload"]:checked');
     var se=s4?s4.querySelector('select'):null;
-    var r3=await sb.from('practice_info').upsert({profile_id:user.id,practice_type:chip?(ptMap[chip.textContent]||'other'):null,daily_patient_load:lc?lc.value:null,organisation_name:i4[0]?i4[0].value.trim():null,city:i4[1]?i4[1].value.trim():null,pin_code:i4[2]?i4[2].value.trim():null,state:se?se.value:null});
+    var r3=await sb.from('practice_info').upsert({profile_id:user.id,practice_type:chip?(ptMap[chip.textContent]||'other'):null,daily_patient_load:lc?lc.value:null,organisation_name:i4[0]?i4[0].value.trim():null,city:i4[1]?i4[1].value.trim():null,pin_code:i4[2]&&i4[2].value.trim()&&/^\d{6}$/.test(i4[2].value.trim())?i4[2].value.trim():null,state:se?se.value:null});
     if(r3.error)throw r3.error;
     goTo(7);
   }catch(err){alert('Registration error: '+(err.message||'Unknown error. Please try again.'));}
@@ -999,7 +999,74 @@ function toggleConsent(cardId,cbId){var cb=document.getElementById(cbId);if(!cb)
 function updateCTA(){var c1=document.getElementById('c1'),c2=document.getElementById('c2'),btn=document.getElementById('ctaBtn');if(btn)btn.disabled=!(c1&&c1.checked&&c2&&c2.checked);}
 
 async function checkSession(){
-  try{var r=await sb.auth.getSession();if(r.data&&r.data.session)window.location.href='/Opti-eye-care/dashboard.html';}catch(e){}
+  try{var r=await sb.auth.getSession();if(r.data&&r.data.session)window.location.href='dashboard.html';}catch(e){}
+}
+
+
+function showStepErr(msg) {
+  var existing = document.getElementById('stepErrBanner');
+  if (existing) existing.remove();
+  var banner = document.createElement('div');
+  banner.id = 'stepErrBanner';
+  banner.style.cssText = 'background:#FCEBEB;color:#A32D2D;border:1px solid #F09595;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;';
+  banner.textContent = msg;
+  var active = document.querySelector('.step-panel.active');
+  if (active) active.insertBefore(banner, active.firstChild);
+  window.scrollTo(0,0);
+}
+function clearStepErr() {
+  var b = document.getElementById('stepErrBanner');
+  if (b) b.remove();
+}
+
+function validateStep2() {
+  clearStepErr();
+  var roleSelected = (document.getElementById('roleStudent') && document.getElementById('roleStudent').classList.contains('selected')) ||
+                     (document.getElementById('rolePro') && document.getElementById('rolePro').classList.contains('selected'));
+  if (!roleSelected) { showStepErr('Please select your role — Student or Working professional.'); return; }
+
+  var rolePro = document.getElementById('rolePro') && document.getElementById('rolePro').classList.contains('selected');
+  var roleStudent = document.getElementById('roleStudent') && document.getElementById('roleStudent').classList.contains('selected');
+
+  if (roleStudent) {
+    var sc = document.querySelector('[name="studyRole"]:checked');
+    if (!sc) { showStepErr('Please select what you are studying as.'); return; }
+  }
+  if (rolePro) {
+    var pc = document.querySelector('[name="proRole"]:checked');
+    if (!pc) { showStepErr('Please select your professional role.'); return; }
+  }
+  var qc = document.querySelector('[name="qual"]:checked');
+  if (!qc) { showStepErr('Please select your highest qualification.'); return; }
+  goTo(3);
+}
+
+function validateStep3() {
+  clearStepErr();
+  var chip = document.querySelector('.chip.selected');
+  if (!chip) { showStepErr('Please select your practice type.'); return; }
+  var load = document.querySelector('[name="pload"]:checked');
+  if (!load) { showStepErr('Please select your daily patient load.'); return; }
+  goTo(4);
+}
+
+function validateStep4() {
+  clearStepErr();
+  var step4 = document.getElementById('step4');
+  var inputs = step4 ? step4.querySelectorAll('input') : [];
+  var org  = inputs[0] ? inputs[0].value.trim() : '';
+  var city = inputs[1] ? inputs[1].value.trim() : '';
+  var pin  = inputs[2] ? inputs[2].value.trim() : '';
+  var state = step4 ? (step4.querySelector('select') ? step4.querySelector('select').value : '') : '';
+
+  if (!org)  { inputs[0] && (inputs[0].classList.add('invalid')); showStepErr('Please enter your clinic or organisation name.'); return; }
+  else { inputs[0] && inputs[0].classList.remove('invalid'); }
+  if (!city) { inputs[1] && (inputs[1].classList.add('invalid')); showStepErr('Please enter your city.'); return; }
+  else { inputs[1] && inputs[1].classList.remove('invalid'); }
+  if (!state || state === '') { showStepErr('Please select your state.'); return; }
+  if (!pin || !/^\d{6}$/.test(pin)) { inputs[2] && (inputs[2].classList.add('invalid')); showStepErr('Please enter a valid 6-digit PIN code.'); return; }
+  else { inputs[2] && inputs[2].classList.remove('invalid'); }
+  goTo(5);
 }
 
 buildSidebar();
