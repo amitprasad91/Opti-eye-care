@@ -155,8 +155,16 @@
         <input class="otp-digit" id="p6" maxlength="1" type="tel">
       </div>
       <button class="btn-primary" id="verifyOtpBtn" onclick="verifyLoginOtp()">Verify & login</button>
-      <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--text-muted);">
-        Didn't receive it? <button class="btn-link" onclick="resendLoginOtp()">Resend</button>
+      <div id="loginTimerWrap" style="font-size:12px;text-align:center;margin-bottom:8px;">
+        <span id="loginTimerLabel" style="color:var(--text-muted);">Code expires in </span>
+        <span id="loginTimer" style="font-weight:600;color:#185FA5;">2:00</span>
+      </div>
+      <div id="loginExpiredBanner" style="display:none;background:#FAEEDA;color:#633806;border:1px solid #EF9F27;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px;text-align:center;">
+        Code expired. Click <strong>Resend</strong> to get a new one.
+      </div>
+      <div style="text-align:center;margin-top:8px;font-size:12px;color:var(--text-muted);">
+        <span id="loginResendCD"></span>
+        <button class="btn-link" id="loginResendBtn" onclick="resendLoginOtp()" style="display:none;">Resend</button>
         &nbsp;·&nbsp; <button class="btn-link" onclick="backToPhone()">Change number</button>
       </div>
     </div>
@@ -291,6 +299,7 @@ async function sendLoginOtp() {
     document.getElementById('phoneStep1').style.display = 'none';
     document.getElementById('phoneStep2').style.display = 'block';
     setTimeout(function() { var el = document.getElementById('p1'); if (el) el.focus(); }, 120);
+    startLoginOtpTimer();
   } catch(err) {
     var msg = err.message || '';
     var e = document.getElementById('phoneErr');
@@ -307,18 +316,83 @@ async function sendLoginOtp() {
   }
 }
 
+var _loginTimerInterval = null;
+var LOGIN_OTP_EXPIRY = 120;
+var LOGIN_RESEND_COOLDOWN = 30;
+
+function startLoginOtpTimer() {
+  if (_loginTimerInterval) clearInterval(_loginTimerInterval);
+  var remaining = LOGIN_OTP_EXPIRY;
+  var resendRemaining = LOGIN_RESEND_COOLDOWN;
+
+  var timerWrap  = document.getElementById('loginTimerWrap');
+  var timerEl    = document.getElementById('loginTimer');
+  var timerLbl   = document.getElementById('loginTimerLabel');
+  var expBanner  = document.getElementById('loginExpiredBanner');
+  var resendBtn  = document.getElementById('loginResendBtn');
+  var resendCD   = document.getElementById('loginResendCD');
+  var verifyBtn  = document.getElementById('verifyOtpBtn');
+
+  if (timerWrap) timerWrap.style.display = 'block';
+  if (timerLbl)  timerLbl.textContent = 'Code expires in ';
+  if (timerEl)   timerEl.style.color = '#185FA5';
+  if (expBanner) expBanner.style.display = 'none';
+  if (resendBtn) resendBtn.style.display = 'none';
+  if (resendCD)  resendCD.textContent = 'Resend in ' + resendRemaining + 's  ';
+  if (verifyBtn) { verifyBtn.disabled = false; verifyBtn.style.opacity = '1'; }
+
+  _loginTimerInterval = setInterval(function() {
+    remaining--;
+    resendRemaining = Math.max(0, resendRemaining - 1);
+
+    if (resendRemaining > 0) {
+      if (resendCD) resendCD.textContent = 'Resend in ' + resendRemaining + 's  ';
+      if (resendBtn) resendBtn.style.display = 'none';
+    } else {
+      if (resendCD) resendCD.textContent = '';
+      if (resendBtn) resendBtn.style.display = 'inline';
+    }
+
+    if (remaining > 0) {
+      var mins = Math.floor(remaining / 60);
+      var secs = remaining % 60;
+      if (timerEl) timerEl.textContent = mins + ':' + (secs < 10 ? '0' : '') + secs;
+      if (remaining <= 30 && timerEl) timerEl.style.color = '#854F0B';
+    } else {
+      clearInterval(_loginTimerInterval);
+      if (timerWrap) timerWrap.style.display = 'none';
+      if (expBanner) expBanner.style.display = 'block';
+      if (verifyBtn) { verifyBtn.disabled = true; verifyBtn.style.opacity = '0.45'; }
+      ['p1','p2','p3','p4','p5','p6'].forEach(function(id){ var el=document.getElementById(id);if(el)el.value=''; });
+      if (resendCD) resendCD.textContent = '';
+      if (resendBtn) resendBtn.style.display = 'inline';
+      var errEl = document.getElementById('otpErr');
+      if (errEl) { errEl.textContent=''; errEl.classList.remove('show'); }
+    }
+  }, 1000);
+}
+
 async function resendLoginOtp() {
   var mob = document.getElementById('loginMobile').value.trim();
   var fmt = formatMobile(mob);
+  var resendBtn = document.getElementById('loginResendBtn');
+  var errEl = document.getElementById('otpErr');
+  if (resendBtn) resendBtn.style.display = 'none';
+  errEl.classList.remove('show');
   try {
     await sb.auth.signInWithOtp({ phone: fmt });
     var b = document.getElementById('otpSentBanner');
-    b.textContent = 'Code resent!'; b.classList.add('show');
-    clearOtp();
-    setTimeout(function() { var el = document.getElementById('p1'); if (el) el.focus(); }, 120);
+    if (b) { b.textContent = 'New code sent!'; b.classList.add('show'); }
+    ['p1','p2','p3','p4','p5','p6'].forEach(function(id){ var el=document.getElementById(id);if(el)el.value=''; });
+    startLoginOtpTimer();
+    setTimeout(function(){ var el=document.getElementById('p1');if(el)el.focus(); }, 100);
   } catch(e) {
-    var err = document.getElementById('otpErr');
-    err.textContent = 'Could not resend. Try again.'; err.classList.add('show');
+    var msg = e.message || '';
+    errEl.textContent = msg.indexOf('rate')!==-1||msg.indexOf('too many')!==-1
+      ? 'Too many attempts. Wait a few minutes.'
+      : 'Could not resend. Try again.';
+    errEl.classList.add('show');
+    if (resendBtn) resendBtn.style.display = 'inline';
   }
 }
 
@@ -329,6 +403,12 @@ function backToPhone() {
 }
 
 async function verifyLoginOtp() {
+  var verifyBtn = document.getElementById('verifyOtpBtn');
+  if (verifyBtn && verifyBtn.disabled) {
+    var e = document.getElementById('otpErr');
+    e.textContent = 'Code expired. Click Resend to get a new one.'; e.classList.add('show');
+    return;
+  }
   var code = getOtp();
   if (code.length < 6) {
     var e = document.getElementById('otpErr');

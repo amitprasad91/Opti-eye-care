@@ -761,7 +761,14 @@
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#378ADD" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
       </div>
       <div style="font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">Verify your mobile</div>
-      <div id="otpSubtext" style="font-size:13px;color:var(--text-secondary);margin-bottom:28px;line-height:1.5;">Enter the 6-digit code sent to your number.</div>
+      <div id="otpSubtext" style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5;">Enter the 6-digit code sent to your number.</div>
+      <div id="otpTimerWrap" style="font-size:12px;margin-bottom:16px;">
+        <span id="otpTimerLabel" style="color:var(--text-muted);">Code expires in </span>
+        <span id="otpTimer" style="font-weight:600;color:var(--blue-600);">2:00</span>
+      </div>
+      <div id="otpExpiredBanner" style="display:none;background:#FAEEDA;color:#633806;border:1px solid #EF9F27;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px;">
+        Code expired. Click <strong>Resend</strong> below to get a new one.
+      </div>
       <div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;">
         <input class="otp-digit" id="o1" maxlength="1" type="tel">
         <input class="otp-digit" id="o2" maxlength="1" type="tel">
@@ -772,28 +779,13 @@
       </div>
       <div id="otpError" style="font-size:12px;color:#A32D2D;margin-bottom:12px;min-height:16px;"></div>
       <button id="otpVerifyBtn" onclick="verifyOtp()" style="width:100%;height:44px;background:var(--blue-400);color:#fff;border:none;border-radius:var(--radius-sm);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer;margin-bottom:12px;">Verify code</button>
-      <div style="font-size:12px;color:var(--text-muted);">Didn't receive it? <span onclick="resendOtp()" style="color:var(--blue-400);cursor:pointer;font-weight:500;">Resend</span></div>
-    </div>
-  </div>
-
-  <div id="otpOverlay" style="display:none;position:absolute;inset:0;background:rgba(4,44,83,0.55);z-index:200;align-items:center;justify-content:center;">
-    <div style="background:var(--surface);border-radius:var(--radius-lg);padding:36px 32px;max-width:380px;width:90%;text-align:center;box-sizing:border-box;">
-      <div style="width:52px;height:52px;border-radius:50%;background:var(--blue-50);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#378ADD" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
+      <div style="font-size:12px;color:var(--text-muted);">
+        Didn't receive it?
+        <span id="resendWrap">
+          <span id="resendCountdown" style="color:var(--text-muted);"></span>
+          <span id="resendBtn" onclick="resendOtp()" style="display:none;color:var(--blue-400);cursor:pointer;font-weight:500;">Resend</span>
+        </span>
       </div>
-      <div style="font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">Verify your mobile</div>
-      <div id="otpSubtext" style="font-size:13px;color:var(--text-secondary);margin-bottom:28px;line-height:1.5;">Enter the 6-digit code sent to your number.</div>
-      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;">
-        <input class="otp-digit" id="o1" maxlength="1" type="tel">
-        <input class="otp-digit" id="o2" maxlength="1" type="tel">
-        <input class="otp-digit" id="o3" maxlength="1" type="tel">
-        <input class="otp-digit" id="o4" maxlength="1" type="tel">
-        <input class="otp-digit" id="o5" maxlength="1" type="tel">
-        <input class="otp-digit" id="o6" maxlength="1" type="tel">
-      </div>
-      <div id="otpError" style="font-size:12px;color:#A32D2D;margin-bottom:12px;min-height:16px;"></div>
-      <button id="otpVerifyBtn" onclick="verifyOtp()" style="width:100%;height:44px;background:var(--blue-400);color:#fff;border:none;border-radius:var(--radius-sm);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer;margin-bottom:12px;">Verify code</button>
-      <div style="font-size:12px;color:var(--text-muted);">Didn't receive it? <span onclick="resendOtp()" style="color:var(--blue-400);cursor:pointer;font-weight:500;">Resend</span></div>
     </div>
   </div>
   </main>
@@ -914,8 +906,80 @@ function setupOtpInputs(){
 }
 function getOtp(){return['o1','o2','o3','o4','o5','o6'].map(function(id){var el=document.getElementById(id);return el?el.value:'';}).join('');}
 function clearOtpInputs(){['o1','o2','o3','o4','o5','o6'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});document.getElementById('otpError').textContent='';}
-function showOtp(mob){document.getElementById('otpSubtext').textContent='Enter the 6-digit code sent to '+mob;document.getElementById('otpOverlay').classList.add('show');clearOtpInputs();setTimeout(function(){var el=document.getElementById('o1');if(el)el.focus();},120);}
-function hideOtp(){document.getElementById('otpOverlay').classList.remove('show');}
+var _otpTimerInterval = null;
+var OTP_EXPIRY_SECS = 120;
+var RESEND_COOLDOWN_SECS = 30;
+
+function showOtp(mob) {
+  document.getElementById('otpSubtext').textContent = 'Enter the 6-digit code sent to ' + mob;
+  document.getElementById('otpOverlay').classList.add('show');
+  clearOtpInputs();
+  document.getElementById('otpError').textContent = '';
+  var exp = document.getElementById('otpExpiredBanner');
+  if (exp) exp.style.display = 'none';
+  setTimeout(function(){ var el=document.getElementById('o1');if(el)el.focus(); }, 120);
+  startOtpTimer();
+}
+
+function startOtpTimer() {
+  if (_otpTimerInterval) clearInterval(_otpTimerInterval);
+  var remaining = OTP_EXPIRY_SECS;
+  var resendRemaining = RESEND_COOLDOWN_SECS;
+
+  // Reset UI
+  var timerWrap = document.getElementById('otpTimerWrap');
+  var timerEl   = document.getElementById('otpTimer');
+  var timerLbl  = document.getElementById('otpTimerLabel');
+  var expBanner = document.getElementById('otpExpiredBanner');
+  var resendBtn = document.getElementById('resendBtn');
+  var resendCD  = document.getElementById('resendCountdown');
+  var verifyBtn = document.getElementById('otpVerifyBtn');
+
+  if (timerWrap) timerWrap.style.display = 'block';
+  if (timerLbl)  timerLbl.textContent = 'Code expires in ';
+  if (timerEl)   timerEl.style.color = '#185FA5';
+  if (expBanner) expBanner.style.display = 'none';
+  if (resendBtn) resendBtn.style.display = 'none';
+  if (resendCD)  resendCD.textContent = 'Resend in ' + resendRemaining + 's';
+  if (verifyBtn) { verifyBtn.disabled = false; verifyBtn.style.opacity = '1'; }
+
+  _otpTimerInterval = setInterval(function() {
+    remaining--;
+    resendRemaining = Math.max(0, resendRemaining - 1);
+
+    // Update resend cooldown
+    if (resendRemaining > 0) {
+      if (resendCD) resendCD.textContent = 'Resend in ' + resendRemaining + 's';
+      if (resendBtn) resendBtn.style.display = 'none';
+    } else {
+      if (resendCD) resendCD.textContent = '';
+      if (resendBtn) resendBtn.style.display = 'inline';
+    }
+
+    // Update OTP countdown
+    if (remaining > 0) {
+      var mins = Math.floor(remaining / 60);
+      var secs = remaining % 60;
+      if (timerEl) timerEl.textContent = mins + ':' + (secs < 10 ? '0' : '') + secs;
+      // Turn amber in last 30 seconds
+      if (remaining <= 30 && timerEl) timerEl.style.color = '#854F0B';
+    } else {
+      // OTP expired
+      clearInterval(_otpTimerInterval);
+      if (timerWrap) timerWrap.style.display = 'none';
+      if (expBanner) expBanner.style.display = 'block';
+      if (verifyBtn) { verifyBtn.disabled = true; verifyBtn.style.opacity = '0.45'; }
+      clearOtpInputs();
+      if (resendCD) resendCD.textContent = '';
+      if (resendBtn) resendBtn.style.display = 'inline';
+      document.getElementById('otpError').textContent = '';
+    }
+  }, 1000);
+}
+function hideOtp() {
+  document.getElementById('otpOverlay').classList.remove('show');
+  if (_otpTimerInterval) { clearInterval(_otpTimerInterval); _otpTimerInterval = null; }
+}
 
 async function continueStep1(){
   if(!validateStep1())return;
@@ -980,6 +1044,12 @@ async function continueStep1(){
 }
 
 async function verifyOtp(){
+  // Block verify if timer already expired
+  var verifyBtn = document.getElementById('otpVerifyBtn');
+  if (verifyBtn && verifyBtn.disabled) {
+    document.getElementById('otpError').textContent = 'Code expired. Click Resend to get a new one.';
+    return;
+  }
   var code=getOtp();
   if(code.length<6){document.getElementById('otpError').textContent='Enter all 6 digits.';return;}
   var btn=document.getElementById('otpVerifyBtn');
@@ -1005,12 +1075,29 @@ async function verifyOtp(){
   finally{btn.textContent=orig;btn.classList.remove('btn-loading');}
 }
 
-async function resendOtp(){
-  var mob=document.getElementById('mobile').value.trim();
-  var fmt=mob.startsWith('+')?mob:'+91'+mob.replace(/\D/g,'');
-  var errEl=document.getElementById('otpError');
-  try{await sb.auth.signInWithOtp({phone:fmt});errEl.style.color='#1D9E75';errEl.textContent='Code resent.';}
-  catch(e){errEl.style.color='#A32D2D';errEl.textContent='Could not resend. Try again.';}
+async function resendOtp() {
+  var mob = document.getElementById('mobile').value.trim();
+  var fmt = mob.startsWith('+') ? mob : '+91' + mob.replace(/\D/g,'');
+  var errEl = document.getElementById('otpError');
+  var resendBtn = document.getElementById('resendBtn');
+  if (resendBtn) { resendBtn.style.display = 'none'; }
+  errEl.textContent = ''; errEl.style.color = '#A32D2D';
+  try {
+    await sb.auth.signInWithOtp({ phone: fmt });
+    errEl.style.color = '#1D9E75';
+    errEl.textContent = 'New code sent!';
+    clearOtpInputs();
+    startOtpTimer(); // Restart full 2:00 timer + 30s resend cooldown
+    setTimeout(function(){ var el=document.getElementById('o1');if(el)el.focus(); }, 100);
+    setTimeout(function(){ errEl.textContent = ''; }, 3000);
+  } catch(e) {
+    var msg = e.message || '';
+    errEl.style.color = '#A32D2D';
+    errEl.textContent = msg.indexOf('rate')!==-1||msg.indexOf('too many')!==-1
+      ? 'Too many attempts. Wait a few minutes before resending.'
+      : 'Could not resend. Try again.';
+    if (resendBtn) resendBtn.style.display = 'inline';
+  }
 }
 
 async function submitRegistration(){
