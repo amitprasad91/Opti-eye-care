@@ -1011,7 +1011,20 @@ async function submitRegistration(){
     var pw=document.getElementById('password').value;
     var r1=await sb.from('profiles').upsert({id:user.id,first_name:fn,last_name:ln,email:em,mobile:mob});
     if(r1.error)throw r1.error;
-    await sb.auth.updateUser({email:em,password:pw});
+    // Update auth user with email + password — wrapped separately
+    // because email might already be set if user abandoned a previous attempt after OTP
+    try{
+      await sb.auth.updateUser({email:em,password:pw});
+    }catch(authErr){
+      // If email already set to same value, that's fine — just update password
+      if(authErr.message&&authErr.message.indexOf('same')!==-1){
+        await sb.auth.updateUser({password:pw});
+      } else if(authErr.message&&(authErr.message.indexOf('registered')!==-1||authErr.message.indexOf('exists')!==-1)){
+        throw authErr; // Real duplicate — surface to user
+      } else {
+        await sb.auth.updateUser({password:pw}); // Try password-only update as fallback
+      }
+    }
     var rs=document.getElementById('roleStudent')&&document.getElementById('roleStudent').classList.contains('selected');
     var rp=document.getElementById('rolePro')&&document.getElementById('rolePro').classList.contains('selected');
     var sc=document.querySelector('[name="studyRole"]:checked');
@@ -1070,7 +1083,38 @@ function toggleConsent(cardId,cbId){var cb=document.getElementById(cbId);if(!cb)
 function updateCTA(){var c1=document.getElementById('c1'),c2=document.getElementById('c2'),btn=document.getElementById('ctaBtn');if(btn)btn.disabled=!(c1&&c1.checked&&c2&&c2.checked);}
 
 async function checkSession(){
-  try{var r=await sb.auth.getSession();if(r.data&&r.data.session)window.location.href='/Opti-eye-care/dashboard.html';}catch(e){}
+  try{
+    var r=await sb.auth.getSession();
+    if(!r.data||!r.data.session) return; // No session — fresh visitor, show registration
+
+    var user=r.data.session.user;
+
+    // Check if they have a completed profile
+    var existing=await sb.from('profiles').select('id').eq('id',user.id).maybeSingle();
+
+    if(existing.data){
+      // Fully registered — send to dashboard
+      window.location.href='/Opti-eye-care/dashboard.html';
+    } else {
+      // Has a session (verified OTP) but no profile yet — abandoned mid-registration.
+      // Restore their mobile in step 1 and skip straight to step 2.
+      var mob=user.phone||'';
+      if(mob&&document.getElementById('mobile')){
+        document.getElementById('mobile').value=mob;
+      }
+      // Show a helpful resume banner
+      var banner=document.createElement('div');
+      banner.style.cssText='background:#E6F1FB;color:#0C447C;border:1px solid #85B7EB;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;line-height:1.5;';
+      banner.innerHTML='Your mobile is already verified. Continue filling in your details below.';
+      var step1=document.getElementById('step1');
+      if(step1){
+        var heading=step1.querySelector('.step-heading');
+        if(heading) heading.insertAdjacentElement('beforebegin',banner);
+      }
+      // Skip to step 2 since OTP is already done
+      goTo(2);
+    }
+  }catch(e){}
 }
 
 
