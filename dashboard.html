@@ -71,6 +71,27 @@
   .skel-val{height:18px;width:50%;}
 
   /* Mobile */
+  /* Edit modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:200;display:none;align-items:center;justify-content:center;padding:20px;}
+  .modal-overlay.show{display:flex;}
+  .modal{background:var(--surface);border-radius:var(--radius-lg);padding:28px 28px 24px;width:100%;max-width:460px;max-height:90vh;overflow-y:auto;}
+  .modal-title{font-size:17px;font-weight:600;margin-bottom:4px;}
+  .modal-sub{font-size:13px;color:var(--text-secondary);margin-bottom:22px;}
+  .modal label{font-size:12px;font-weight:500;color:var(--text-secondary);display:block;margin-bottom:5px;}
+  .modal input,.modal select{width:100%;height:42px;padding:0 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:13px;color:var(--text-primary);background:var(--surface);outline:none;margin-bottom:14px;}
+  .modal input:focus,.modal select:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px rgba(55,138,221,.1);}
+  .modal-footer{display:flex;gap:10px;margin-top:8px;}
+  .btn-cancel{flex:1;height:40px;border:1px solid var(--border);background:var(--surface);border-radius:var(--radius-sm);font-family:inherit;font-size:13px;font-weight:500;color:var(--text-secondary);cursor:pointer;}
+  .btn-save{flex:2;height:40px;border:none;background:var(--blue-400);border-radius:var(--radius-sm);font-family:inherit;font-size:13px;font-weight:500;color:#fff;cursor:pointer;}
+  .btn-save:hover{background:var(--blue-600);}
+  .btn-save.loading{opacity:.65;pointer-events:none;}
+  .err-banner{background:#FCEBEB;color:#A32D2D;border:1px solid #F09595;border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;margin-bottom:12px;display:none;}
+  .err-banner.show{display:block;}
+  .ok-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1D9E75;color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:500;display:none;z-index:300;}
+  .ok-toast.show{display:block;}
+  .edit-btn{font-size:12px;font-weight:500;color:var(--blue-400);background:none;border:none;cursor:pointer;padding:0;font-family:inherit;}
+  .edit-btn:hover{color:var(--blue-600);text-decoration:underline;}
+
   @media(max-width:640px){
     .topnav{padding:0 16px;}
     .page{padding:20px 16px;}
@@ -142,6 +163,7 @@
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#378ADD" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
         </div>
         Personal info
+        <button class="edit-btn" onclick="showEditPersonal()">Edit</button>
       </div>
       <div class="detail-row"><span class="detail-label">Full name</span><span class="detail-value" id="dFullName">—</span></div>
       <div class="detail-row"><span class="detail-label">Email</span><span class="detail-value" id="dEmail" style="word-break:break-all;">—</span></div>
@@ -155,6 +177,7 @@
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#1D9E75" stroke-width="1.6" stroke-linecap="round"><rect x="2" y="6" width="12" height="8" rx="2"/><path d="M5 6V4a3 3 0 016 0v2"/><circle cx="8" cy="10" r="1.2"/></svg>
         </div>
         Professional details
+        <button class="edit-btn" onclick="showEditProfessional()">Edit</button>
       </div>
       <div class="detail-row"><span class="detail-label">Role type</span><span class="detail-value" id="dRole">—</span></div>
       <div class="detail-row"><span class="detail-label">Specialisation</span><span class="detail-value" id="dSpec">—</span></div>
@@ -168,6 +191,7 @@
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#3B6D11" stroke-width="1.6" stroke-linecap="round"><path d="M8 2L2 6v8h4v-4h4v4h4V6L8 2z"/></svg>
         </div>
         Practice details
+        <button class="edit-btn" onclick="showEditPractice()">Edit</button>
       </div>
       <div class="detail-row"><span class="detail-label">Organisation</span><span class="detail-value" id="dOrg">—</span></div>
       <div class="detail-row"><span class="detail-label">Practice type</span><span class="detail-value" id="dPtype">—</span></div>
@@ -300,7 +324,283 @@ sb.auth.getSession().then(function(r) {
     window.location.replace('/Opti-eye-care/index.html');
   }
 });
+
+// ── Cached user data ──────────────────────────────────────────────────
+var _userId = null;
+var _profileData = null;
+var _profData = null;
+var _practData = null;
+
+// Store data when loaded
+var _origLoad = loadDashboard;
+async function loadDashboard() {
+  try {
+    var sess = await sb.auth.getSession();
+    var user = sess.data && sess.data.session ? sess.data.session.user : null;
+    if (!user) { window.location.replace('/Opti-eye-care/login.html'); return; }
+    document.body.style.visibility = 'visible';
+    _userId = user.id;
+    document.getElementById('navEmail').textContent = user.email || '';
+
+    var pr = await sb.from('profiles').select('*').eq('id', user.id).single();
+    if (pr.data) {
+      _profileData = pr.data;
+      var p = pr.data;
+      var fullName = [p.first_name, p.last_name].filter(Boolean).join(' ');
+      var initials = [(p.first_name||'')[0],(p.last_name||'')[0]].filter(Boolean).join('').toUpperCase()||'?';
+      var joined = new Date(p.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+      set('welcomeName','Welcome, Dr. '+(p.first_name||''));
+      set('avatarInitials',initials);
+      set('memberSince','Since '+joined);
+      set('dFullName',fullName);
+      set('dEmail',p.email);
+      set('dMobile',p.mobile);
+      set('dJoined',joined);
+    }
+
+    var pd = await sb.from('professional_details').select('*').eq('profile_id', user.id).single();
+    if (pd.data) {
+      _profData = pd.data;
+      var d = pd.data;
+      var roleLabel = d.role_type==='student'?'Student':'Working professional';
+      var specLabel = specLabels[d.specialisation]||d.specialisation||'—';
+      var qualLabel = qualLabels[d.qualification]||d.qualification||'—';
+      set('statRole',roleLabel); set('statSpec',specLabel);
+      set('welcomeSub',roleLabel+' · '+specLabel);
+      set('dRole',roleLabel); set('dSpec',specLabel); set('dQual',qualLabel);
+      if (d.role_type==='professional'&&d.experience_years!==null) {
+        set('dExp',d.experience_years===1?'1 year':d.experience_years+' years');
+      } else { var row=document.getElementById('dExpRow');if(row)row.style.display='none'; }
+    }
+
+    var pi = await sb.from('practice_info').select('*').eq('profile_id', user.id).single();
+    if (pi.data) {
+      _practData = pi.data;
+      var info = pi.data;
+      var ptLabel = ptypeLabels[info.practice_type]||info.practice_type||'—';
+      var loadLabel = loadLabels[info.daily_patient_load]||'—';
+      var location = [info.city,info.state].filter(Boolean).join(', ');
+      set('statPractice',ptLabel); set('statCity',location||'—');
+      set('dOrg',info.organisation_name); set('dPtype',ptLabel);
+      set('dLoad',loadLabel);
+      set('dLocation',[location,info.pin_code].filter(Boolean).join(' – '));
+    }
+  } catch(err) { console.error('Dashboard error:',err); }
+}
+
+// ── Modal helpers ─────────────────────────────────────────────────────
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+function showToast(msg) {
+  var t=document.getElementById('okToast'); t.textContent=msg||'Saved.'; t.classList.add('show');
+  setTimeout(function(){t.classList.remove('show');},3000);
+}
+
+// ── Edit personal ─────────────────────────────────────────────────────
+function showEditPersonal() {
+  if (_profileData) {
+    document.getElementById('editFirstName').value = _profileData.first_name||'';
+    document.getElementById('editLastName').value  = _profileData.last_name||'';
+    document.getElementById('editEmail').value     = _profileData.email||'';
+  }
+  document.getElementById('errPersonal').classList.remove('show');
+  document.getElementById('modalPersonal').classList.add('show');
+}
+async function savePersonal() {
+  var btn=document.getElementById('savePersonalBtn');
+  var fn=document.getElementById('editFirstName').value.trim();
+  var ln=document.getElementById('editLastName').value.trim();
+  var em=document.getElementById('editEmail').value.trim();
+  var errEl=document.getElementById('errPersonal');
+  errEl.classList.remove('show');
+  if(!fn||!ln){errEl.textContent='First and last name are required.';errEl.classList.add('show');return;}
+  if(!em||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){errEl.textContent='Enter a valid email.';errEl.classList.add('show');return;}
+  btn.textContent='Saving…';btn.classList.add('loading');
+  try {
+    var r=await sb.from('profiles').update({first_name:fn,last_name:ln,email:em}).eq('id',_userId);
+    if(r.error)throw r.error;
+    if(em!==(_profileData&&_profileData.email)) await sb.auth.updateUser({email:em});
+    _profileData=Object.assign({},_profileData,{first_name:fn,last_name:ln,email:em});
+    closeModal('modalPersonal');
+    loadDashboard();
+    showToast('Personal info updated.');
+  } catch(err){errEl.textContent=err.message||'Save failed.';errEl.classList.add('show');}
+  finally{btn.textContent='Save changes';btn.classList.remove('loading');}
+}
+
+// ── Edit professional ─────────────────────────────────────────────────
+function showEditProfessional() {
+  if (_profData) {
+    document.getElementById('editRoleType').value = _profData.role_type||'professional';
+    document.getElementById('editSpec').value     = _profData.specialisation||'optom';
+    document.getElementById('editQual').value     = _profData.qualification||'boptom';
+    document.getElementById('editExp').value      = _profData.experience_years||0;
+  }
+  document.getElementById('errProfessional').classList.remove('show');
+  document.getElementById('modalProfessional').classList.add('show');
+}
+async function saveProfessional() {
+  var btn=document.getElementById('saveProfBtn');
+  var errEl=document.getElementById('errProfessional');
+  errEl.classList.remove('show');
+  btn.textContent='Saving…';btn.classList.add('loading');
+  try {
+    var r=await sb.from('professional_details').update({
+      role_type:    document.getElementById('editRoleType').value,
+      specialisation: document.getElementById('editSpec').value,
+      qualification:  document.getElementById('editQual').value,
+      experience_years: parseInt(document.getElementById('editExp').value)||0,
+    }).eq('profile_id',_userId);
+    if(r.error)throw r.error;
+    closeModal('modalProfessional');
+    loadDashboard();
+    showToast('Professional details updated.');
+  } catch(err){errEl.textContent=err.message||'Save failed.';errEl.classList.add('show');}
+  finally{btn.textContent='Save changes';btn.classList.remove('loading');}
+}
+
+// ── Edit practice ─────────────────────────────────────────────────────
+function showEditPractice() {
+  if (_practData) {
+    document.getElementById('editOrg').value   = _practData.organisation_name||'';
+    document.getElementById('editPtype').value = _practData.practice_type||'clinic';
+    document.getElementById('editLoad').value  = _practData.daily_patient_load||'lt10';
+    document.getElementById('editCity').value  = _practData.city||'';
+    document.getElementById('editState').value = _practData.state||'';
+    document.getElementById('editPin').value   = _practData.pin_code||'';
+  }
+  document.getElementById('errPractice').classList.remove('show');
+  document.getElementById('modalPractice').classList.add('show');
+}
+async function savePractice() {
+  var btn=document.getElementById('savePracticeBtn');
+  var errEl=document.getElementById('errPractice');
+  errEl.classList.remove('show');
+  var pin=document.getElementById('editPin').value.trim();
+  if(pin&&!/^\d{6}$/.test(pin)){errEl.textContent='PIN code must be exactly 6 digits.';errEl.classList.add('show');return;}
+  btn.textContent='Saving…';btn.classList.add('loading');
+  try {
+    var r=await sb.from('practice_info').update({
+      organisation_name:   document.getElementById('editOrg').value.trim(),
+      practice_type:       document.getElementById('editPtype').value,
+      daily_patient_load:  document.getElementById('editLoad').value,
+      city:                document.getElementById('editCity').value.trim(),
+      state:               document.getElementById('editState').value,
+      pin_code:            pin||null,
+    }).eq('profile_id',_userId);
+    if(r.error)throw r.error;
+    closeModal('modalPractice');
+    loadDashboard();
+    showToast('Practice details updated.');
+  } catch(err){errEl.textContent=err.message||'Save failed.';errEl.classList.add('show');}
+  finally{btn.textContent='Save changes';btn.classList.remove('loading');}
+}
+
+// Close modal on overlay click
+document.addEventListener('click',function(e){
+  ['modalPersonal','modalProfessional','modalPractice'].forEach(function(id){
+    var m=document.getElementById(id);
+    if(e.target===m)closeModal(id);
+  });
+});
+
 loadDashboard();
 </script>
+
+<!-- Toast -->
+<div class="ok-toast" id="okToast">Changes saved successfully.</div>
+
+<!-- Edit Personal Modal -->
+<div class="modal-overlay" id="modalPersonal">
+  <div class="modal">
+    <div class="modal-title">Edit personal info</div>
+    <div class="modal-sub">Updates your profile details.</div>
+    <div class="err-banner" id="errPersonal"></div>
+    <label>First name</label><input type="text" id="editFirstName">
+    <label>Last name</label><input type="text" id="editLastName">
+    <label>Email address</label><input type="email" id="editEmail">
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modalPersonal')">Cancel</button>
+      <button class="btn-save" id="savePersonalBtn" onclick="savePersonal()">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Professional Modal -->
+<div class="modal-overlay" id="modalProfessional">
+  <div class="modal">
+    <div class="modal-title">Edit professional details</div>
+    <div class="modal-sub">Updates your role and qualifications.</div>
+    <div class="err-banner" id="errProfessional"></div>
+    <label>Role type</label>
+    <select id="editRoleType">
+      <option value="student">Student</option>
+      <option value="professional">Working professional</option>
+    </select>
+    <label>Specialisation</label>
+    <select id="editSpec">
+      <option value="optom">Optometrist</option>
+      <option value="ophtha">Ophthalmologist</option>
+      <option value="optom-ophtha">Optometrist / Ophthalmologist</option>
+      <option value="optician">Optician / Distributor</option>
+      <option value="acad">Academician / Industry / Others</option>
+      <option value="other">Other</option>
+    </select>
+    <label>Qualification</label>
+    <select id="editQual">
+      <option value="boptom">B.Optom</option>
+      <option value="moptom">M.Optom</option>
+      <option value="do">D.O</option>
+      <option value="phd">PhD / MS / Others</option>
+    </select>
+    <label>Years of experience</label>
+    <input type="number" id="editExp" min="0" max="60" placeholder="0">
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modalProfessional')">Cancel</button>
+      <button class="btn-save" id="saveProfBtn" onclick="saveProfessional()">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Practice Modal -->
+<div class="modal-overlay" id="modalPractice">
+  <div class="modal">
+    <div class="modal-title">Edit practice details</div>
+    <div class="modal-sub">Updates your practice and location info.</div>
+    <div class="err-banner" id="errPractice"></div>
+    <label>Organisation name</label><input type="text" id="editOrg">
+    <label>Practice type</label>
+    <select id="editPtype">
+      <option value="hospital">Hospital</option>
+      <option value="clinic">Private clinic</option>
+      <option value="optical">Optical store</option>
+      <option value="academic">Academic institution</option>
+      <option value="other">Other</option>
+    </select>
+    <label>Daily patient load</label>
+    <select id="editLoad">
+      <option value="lt10">Fewer than 10</option>
+      <option value="10-30">10–30 patients</option>
+      <option value="30-50">30–50 patients</option>
+      <option value="gt50">More than 50</option>
+    </select>
+    <label>City</label><input type="text" id="editCity">
+    <label>State</label>
+    <select id="editState">
+      <option value="">Select state</option>
+      <option>Andhra Pradesh</option><option>Assam</option><option>Bihar</option>
+      <option>Delhi</option><option>Goa</option><option>Gujarat</option>
+      <option>Haryana</option><option>Karnataka</option><option>Kerala</option>
+      <option>Madhya Pradesh</option><option>Maharashtra</option><option>Odisha</option>
+      <option>Punjab</option><option>Rajasthan</option><option>Tamil Nadu</option>
+      <option>Telangana</option><option>Uttar Pradesh</option><option>West Bengal</option>
+      <option>Other</option>
+    </select>
+    <label>PIN code</label><input type="text" id="editPin" maxlength="6" placeholder="6-digit PIN">
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modalPractice')">Cancel</button>
+      <button class="btn-save" id="savePracticeBtn" onclick="savePractice()">Save changes</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

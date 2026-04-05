@@ -710,6 +710,7 @@
     <div class="step-panel" id="step6">
       <div class="step-heading">Almost there</div>
       <div class="step-desc">Review and accept the following to create your professional account. Both are required.</div>
+      <div id="submitErrBanner" style="display:none;background:#FCEBEB;color:#A32D2D;border:1px solid #F09595;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;line-height:1.5;"></div>
 
       <div class="consent-card" id="cc1" onclick="toggleConsent('cc1','c1')">
         <input type="checkbox" id="c1" onclick="event.stopPropagation();updateCTA()">
@@ -870,7 +871,7 @@ function goTo(n){
     nm.className='step-name'+(i<n?' done':i===n?' active':'');
     dot.innerHTML=i<n?'&#10003;':i;
   }
-  if(n===7){var em=document.getElementById('email'),ec=document.getElementById('emailConfirm');if(em&&ec&&em.value)ec.textContent=em.value;}
+  if(n===7){var em=document.getElementById('email'),ec=document.getElementById('emailConfirm');if(em&&ec&&em.value)ec.textContent=em.value;clearDraftOnSuccess();}
   window.scrollTo(0,0);
 }
 
@@ -935,7 +936,26 @@ async function verifyOtp(){
   document.getElementById('otpError').textContent='';
   var mob=document.getElementById('mobile').value.trim();
   var fmt=mob.startsWith('+')?mob:'+91'+mob.replace(/\D/g,'');
-  try{var r=await sb.auth.verifyOtp({phone:fmt,token:code,type:'sms'});if(r.error)throw r.error;hideOtp();goTo(2);}
+  try{
+    var r=await sb.auth.verifyOtp({phone:fmt,token:code,type:'sms'});
+    if(r.error)throw r.error;
+
+    // Check if this phone already has a completed profile
+    var existing = await sb.from('profiles').select('id').eq('id', r.data.user.id).single();
+    if (existing.data) {
+      // User already registered — redirect to dashboard
+      hideOtp();
+      var banner = document.createElement('div');
+      banner.style.cssText = 'background:#EAF3DE;color:#27500A;border:1px solid #97C459;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;';
+      banner.innerHTML = 'Welcome back! You already have an account. <a href="/Opti-eye-care/dashboard.html" style="color:#27500A;font-weight:600;text-decoration:underline;">Go to dashboard</a>';
+      var step1 = document.getElementById('step1');
+      if (step1) step1.insertBefore(banner, step1.firstChild);
+      window.scrollTo(0,0);
+    } else {
+      hideOtp();
+      goTo(2);
+    }
+  }
   catch(err){document.getElementById('otpError').textContent=err.message||'Invalid code. Try again.';}
   finally{btn.textContent=orig;btn.classList.remove('btn-loading');}
 }
@@ -980,7 +1000,28 @@ async function submitRegistration(){
     var r3=await sb.from('practice_info').upsert({profile_id:user.id,practice_type:chip?(ptMap[chip.textContent]||'other'):null,daily_patient_load:lc?lc.value:null,organisation_name:i4[0]?i4[0].value.trim():null,city:i4[1]?i4[1].value.trim():null,pin_code:i4[2]&&i4[2].value.trim()&&/^\d{6}$/.test(i4[2].value.trim())?i4[2].value.trim():null,state:se?se.value:null});
     if(r3.error)throw r3.error;
     goTo(7);
-  }catch(err){alert('Registration error: '+(err.message||'Unknown error. Please try again.'));}
+  }catch(err){
+    var msg = err.message || '';
+    var banner = document.getElementById('submitErrBanner');
+
+    // Duplicate email
+    if (msg.indexOf('already been registered') !== -1 || msg.indexOf('already exists') !== -1 || msg.indexOf('duplicate') !== -1 || (err.code && err.code === '23505')) {
+      showSubmitErr('An account with this email or mobile already exists. <a href="/Opti-eye-care/login.html" style="color:#A32D2D;font-weight:600;text-decoration:underline;">Login instead</a>');
+
+    // Session expired during registration
+    } else if (msg.indexOf('session') !== -1 || msg.indexOf('JWT') !== -1 || msg.indexOf('expired') !== -1) {
+      showSubmitErr('Your session expired. Please go back to Step 1 and verify your mobile again.');
+
+    // Network error
+    } else if (msg.indexOf('fetch') !== -1 || msg.indexOf('network') !== -1 || msg.indexOf('Failed to fetch') !== -1) {
+      showSubmitErr('Network error. Check your connection and try again.');
+
+    // Generic fallback
+    } else {
+      showSubmitErr('Something went wrong: ' + msg + '. Please try again or contact support.');
+    }
+    window.scrollTo(0, 0);
+  }
   finally{btn.textContent=orig;btn.classList.remove('btn-loading');btn.disabled=false;}
 }
 
@@ -1070,8 +1111,131 @@ function validateStep4() {
   goTo(5);
 }
 
+function showSubmitErr(html) {
+  var banner = document.getElementById('submitErrBanner');
+  if (!banner) return;
+  banner.innerHTML = html;
+  banner.style.display = 'block';
+}
+function hideSubmitErr() {
+  var banner = document.getElementById('submitErrBanner');
+  if (banner) banner.style.display = 'none';
+}
+
+// ── Form persistence (localStorage) ──────────────────────────────────
+var STORAGE_KEY = 'optireg_draft';
+
+function saveDraft() {
+  try {
+    var draft = {
+      firstName:  document.getElementById('firstName')  ? document.getElementById('firstName').value  : '',
+      lastName:   document.getElementById('lastName')   ? document.getElementById('lastName').value   : '',
+      email:      document.getElementById('email')      ? document.getElementById('email').value      : '',
+      mobile:     document.getElementById('mobile')     ? document.getElementById('mobile').value     : '',
+      role:       document.getElementById('roleStudent') && document.getElementById('roleStudent').classList.contains('selected') ? 'student' :
+                  document.getElementById('rolePro')    && document.getElementById('rolePro').classList.contains('selected')    ? 'pro' : '',
+      studyRole:  document.querySelector('[name="studyRole"]:checked')  ? document.querySelector('[name="studyRole"]:checked').value  : '',
+      proRole:    document.querySelector('[name="proRole"]:checked')    ? document.querySelector('[name="proRole"]:checked').value    : '',
+      qual:       document.querySelector('[name="qual"]:checked')       ? document.querySelector('[name="qual"]:checked').value       : '',
+      expYears:   document.getElementById('expVal')     ? document.getElementById('expVal').textContent : '',
+      practiceChip: document.querySelector('.chip.selected') ? document.querySelector('.chip.selected').textContent : '',
+      pload:      document.querySelector('[name="pload"]:checked')      ? document.querySelector('[name="pload"]:checked').value      : '',
+    };
+    var s4 = document.getElementById('step4');
+    var i4 = s4 ? s4.querySelectorAll('input') : [];
+    draft.org   = i4[0] ? i4[0].value : '';
+    draft.city  = i4[1] ? i4[1].value : '';
+    draft.pin   = i4[2] ? i4[2].value : '';
+    draft.state = s4 && s4.querySelector('select') ? s4.querySelector('select').value : '';
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+  } catch(e) {}
+}
+
+function loadDraft() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    var d = JSON.parse(raw);
+
+    // Step 1 fields
+    if (d.firstName && document.getElementById('firstName')) document.getElementById('firstName').value = d.firstName;
+    if (d.lastName  && document.getElementById('lastName'))  document.getElementById('lastName').value  = d.lastName;
+    if (d.email     && document.getElementById('email'))     document.getElementById('email').value     = d.email;
+    if (d.mobile    && document.getElementById('mobile'))    document.getElementById('mobile').value    = d.mobile;
+
+    // Step 2 — role
+    if (d.role) selectRole(d.role === 'student' ? 'student' : 'pro');
+    if (d.studyRole) {
+      var sr = document.querySelector('[name="studyRole"][value="' + d.studyRole + '"]');
+      if (sr) selectCheck(sr.closest('.check-option'), 'studyRole');
+    }
+    if (d.proRole) {
+      var pr = document.querySelector('[name="proRole"][value="' + d.proRole + '"]');
+      if (pr) selectCheck(pr.closest('.check-option'), 'proRole');
+    }
+    if (d.qual) {
+      var ql = document.querySelector('[name="qual"][value="' + d.qual + '"]');
+      if (ql) selectCheck(ql.closest('.check-option'), 'qual');
+    }
+
+    // Step 3 — practice
+    if (d.practiceChip) {
+      document.querySelectorAll('.chip').forEach(function(c) {
+        if (c.textContent.trim() === d.practiceChip.trim()) selectChip(c, 'ptype');
+      });
+    }
+    if (d.pload) {
+      var pl = document.querySelector('[name="pload"][value="' + d.pload + '"]');
+      if (pl) selectCheck(pl.closest('.check-option'), 'pload');
+    }
+
+    // Step 4 — location
+    var s4 = document.getElementById('step4');
+    var i4 = s4 ? s4.querySelectorAll('input') : [];
+    if (d.org   && i4[0]) i4[0].value = d.org;
+    if (d.city  && i4[1]) i4[1].value = d.city;
+    if (d.pin   && i4[2]) i4[2].value = d.pin;
+    if (d.state && s4 && s4.querySelector('select')) s4.querySelector('select').value = d.state;
+
+    // Show resume banner on step 1
+    if (d.firstName || d.email) {
+      var banner = document.createElement('div');
+      banner.style.cssText = 'background:#E6F1FB;color:#0C447C;border:1px solid #85B7EB;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;display:flex;justify-content:space-between;align-items:center;';
+      banner.innerHTML = '<span>Your progress has been restored.</span><span onclick="clearDraft()" style="cursor:pointer;font-weight:500;color:#A32D2D;">Clear</span>';
+      var step1 = document.getElementById('step1');
+      if (step1) step1.insertBefore(banner, step1.querySelector('.step-heading'));
+    }
+  } catch(e) {}
+}
+
+function clearDraft() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+  window.location.reload();
+}
+
+// Auto-save draft on every input change
+function setupDraftSaving() {
+  document.querySelectorAll('input, select').forEach(function(el) {
+    el.addEventListener('change', saveDraft);
+    el.addEventListener('input', saveDraft);
+  });
+  // Also save on role/chip clicks via a mutation or polling
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.role-card') || e.target.closest('.chip') || e.target.closest('.check-option')) {
+      setTimeout(saveDraft, 50);
+    }
+  });
+}
+
+// Clear draft on successful registration
+function clearDraftOnSuccess() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+}
+
 buildSidebar();
 setupOtpInputs();
+setupDraftSaving();
+loadDraft();
 checkSession();
 
 </script>
