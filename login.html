@@ -267,17 +267,40 @@ async function sendLoginOtp() {
   }
   document.getElementById('loginMobile').classList.remove('invalid');
   var btn = document.getElementById('sendOtpBtn');
-  btn.textContent = 'Sending…'; btn.classList.add('loading');
+  btn.textContent = 'Checking…'; btn.classList.add('loading');
   var fmt = formatMobile(mob);
+  var last10 = mob.replace(/\D/g,'').slice(-10);
   try {
+    // Check if mobile is registered before sending OTP
+    var check = await sb.from('profiles').select('id')
+      .or('mobile.eq.'+last10+',mobile.eq.+91'+last10+',mobile.eq.91'+last10)
+      .maybeSingle();
+
+    if (!check.data) {
+      // Not registered — block login, show register link
+      var e = document.getElementById('phoneErr');
+      e.innerHTML = 'This number is not registered. <a href="/Opti-eye-care/index.html" style="color:#A32D2D;font-weight:600;text-decoration:underline;">Create an account →</a>';
+      e.classList.add('show');
+      return;
+    }
+
+    // Registered — send OTP
+    btn.textContent = 'Sending…';
     var r = await sb.auth.signInWithOtp({ phone: fmt });
     if (r.error) throw r.error;
     document.getElementById('phoneStep1').style.display = 'none';
     document.getElementById('phoneStep2').style.display = 'block';
     setTimeout(function() { var el = document.getElementById('p1'); if (el) el.focus(); }, 120);
   } catch(err) {
+    var msg = err.message || '';
     var e = document.getElementById('phoneErr');
-    e.textContent = err.message || 'Could not send OTP. Check the number.';
+    if (msg.indexOf('rate')!==-1 || msg.indexOf('too many')!==-1) {
+      e.textContent = 'Too many attempts. Please wait a few minutes before trying again.';
+    } else if (msg.indexOf('fetch')!==-1 || msg.indexOf('network')!==-1) {
+      e.textContent = 'Could not connect. Check your internet and try again.';
+    } else {
+      e.textContent = msg || 'Could not send OTP. Please try again.';
+    }
     e.classList.add('show');
   } finally {
     btn.textContent = 'Send OTP'; btn.classList.remove('loading');
@@ -320,7 +343,18 @@ async function verifyLoginOtp() {
   try {
     var r = await sb.auth.verifyOtp({ phone: fmt, token: code, type: 'sms' });
     if (r.error) throw r.error;
-    window.location.href = '/Opti-eye-care/dashboard.html';
+    // Verify profile exists before redirecting
+    var profile = await sb.from('profiles').select('id').eq('id', r.data.user.id).maybeSingle();
+    if (profile.data) {
+      window.location.href = '/Opti-eye-care/dashboard.html';
+    } else {
+      // Has auth but no profile — something went wrong, send to register
+      await sb.auth.signOut();
+      var e = document.getElementById('otpErr');
+      e.textContent = 'Account not found. Please register first.';
+      e.classList.add('show');
+      setTimeout(function(){ window.location.href='/Opti-eye-care/index.html'; }, 2500);
+    }
   } catch(err) {
     var e = document.getElementById('otpErr');
     e.textContent = err.message || 'Invalid code. Try again.'; e.classList.add('show');
@@ -353,7 +387,16 @@ async function emailLogin() {
     window.location.href = '/Opti-eye-care/dashboard.html';
   } catch(err) {
     var e = document.getElementById('emailErr');
-    e.textContent = err.message || 'Login failed. Check your email and password.';
+    var msg = err.message || '';
+    if (msg.indexOf('Invalid login credentials') !== -1 || msg.indexOf('invalid') !== -1) {
+      e.textContent = 'Incorrect email or password. Please try again.';
+    } else if (msg.indexOf('Email not confirmed') !== -1) {
+      e.textContent = 'Please verify your email first. Check your inbox for a confirmation link.';
+    } else if (msg.indexOf('fetch') !== -1 || msg.indexOf('network') !== -1) {
+      e.textContent = 'Could not connect. Check your internet and try again.';
+    } else {
+      e.textContent = msg || 'Login failed. Please try again.';
+    }
     e.classList.add('show');
   } finally {
     btn.textContent = 'Login'; btn.classList.remove('loading');

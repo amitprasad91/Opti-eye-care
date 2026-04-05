@@ -244,7 +244,7 @@ async function loadDashboard() {
     var sess = await sb.auth.getSession();
     var user = sess.data && sess.data.session ? sess.data.session.user : null;
     if (!user) {
-      window.location.replace('/Opti-eye-care/index.html');
+      window.location.replace('/Opti-eye-care/login.html');
       return;
     }
     document.body.style.visibility = 'visible';
@@ -253,6 +253,18 @@ async function loadDashboard() {
 
     // Load profile
     var pr = await sb.from('profiles').select('*').eq('id', user.id).single();
+    if (!pr.data) {
+      // Authenticated but no profile row — account incomplete
+      document.getElementById('welcomeName').textContent = 'Account setup incomplete';
+      document.getElementById('welcomeSub').textContent = 'Your profile data could not be found. Please complete registration.';
+      var completeBtn = document.createElement('a');
+      completeBtn.href = '/Opti-eye-care/index.html';
+      completeBtn.style.cssText = 'display:inline-block;margin-top:16px;padding:10px 20px;background:var(--blue-400);color:#fff;border-radius:var(--radius-sm);font-size:14px;font-weight:500;text-decoration:none;';
+      completeBtn.textContent = 'Complete registration';
+      var wr = document.querySelector('.welcome-text');
+      if (wr) wr.appendChild(completeBtn);
+      return;
+    }
     if (pr.data) {
       var p = pr.data;
       var fullName = [p.first_name, p.last_name].filter(Boolean).join(' ');
@@ -319,11 +331,7 @@ async function signOut() {
 }
 
 // Instant redirect if no session — don't wait for loadDashboard
-sb.auth.getSession().then(function(r) {
-  if (!r.data || !r.data.session) {
-    window.location.replace('/Opti-eye-care/index.html');
-  }
-});
+// Auth guard handled inside loadDashboard() below
 
 // ── Cached user data ──────────────────────────────────────────────────
 var _userId = null;
@@ -343,6 +351,18 @@ async function loadDashboard() {
     document.getElementById('navEmail').textContent = user.email || '';
 
     var pr = await sb.from('profiles').select('*').eq('id', user.id).single();
+    if (!pr.data) {
+      // Authenticated but no profile row — account incomplete
+      document.getElementById('welcomeName').textContent = 'Account setup incomplete';
+      document.getElementById('welcomeSub').textContent = 'Your profile data could not be found. Please complete registration.';
+      var completeBtn = document.createElement('a');
+      completeBtn.href = '/Opti-eye-care/index.html';
+      completeBtn.style.cssText = 'display:inline-block;margin-top:16px;padding:10px 20px;background:var(--blue-400);color:#fff;border-radius:var(--radius-sm);font-size:14px;font-weight:500;text-decoration:none;';
+      completeBtn.textContent = 'Complete registration';
+      var wr = document.querySelector('.welcome-text');
+      if (wr) wr.appendChild(completeBtn);
+      return;
+    }
     if (pr.data) {
       _profileData = pr.data;
       var p = pr.data;

@@ -925,12 +925,13 @@ async function continueStep1(){
   var fmt=mob.startsWith('+')?mob:'+91'+mob.replace(/\D/g,'');
 
   try{
-    // Check if mobile already registered BEFORE sending OTP
-    var existing=await sb.from('profiles').select('id,mobile').eq('mobile',mob.replace(/\D/g,'').slice(-10)).maybeSingle();
-    if(!existing.data){
-      // Also check with full formatted number
-      existing=await sb.from('profiles').select('id,mobile').eq('mobile',fmt).maybeSingle();
-    }
+    // Normalise to last 10 digits for consistent comparison
+    var digits=mob.replace(/\D/g,'');
+    var last10=digits.slice(-10);
+    // Check all possible formats stored in DB
+    var existing=await sb.from('profiles').select('id,mobile')
+      .or('mobile.eq.'+last10+',mobile.eq.+91'+last10+',mobile.eq.91'+last10)
+      .maybeSingle();
 
     if(existing.data){
       // Mobile already registered — block and tell user to login
@@ -967,7 +968,14 @@ async function continueStep1(){
     if(prev)prev.style.display='none';
     showOtp(fmt);
   }
-  catch(err){setErr('mobile',err.message||'Could not send OTP. Check the number.');}
+  catch(err){
+    var msg=err.message||'';
+    if(msg.indexOf('fetch')!==-1||msg.indexOf('network')!==-1||msg.indexOf('Failed')!==-1){
+      setErr('mobile','Could not connect. Check your internet connection and try again.');
+    } else {
+      setErr('mobile',msg||'Could not send OTP. Please try again.');
+    }
+  }
   finally{btn.textContent=orig;btn.classList.remove('btn-loading');}
 }
 
@@ -985,7 +993,15 @@ async function verifyOtp(){
     hideOtp();
     goTo(2);
   }
-  catch(err){document.getElementById('otpError').textContent=err.message||'Invalid code. Try again.';}
+  catch(err){
+    var msg=err.message||'';
+    var friendly=msg.indexOf('expired')!==-1||msg.indexOf('invalid')!==-1
+      ?'Code expired or invalid. Click Resend to get a new one.'
+      :msg||'Invalid code. Try again.';
+    document.getElementById('otpError').textContent=friendly;
+    clearOtpInputs();
+    setTimeout(function(){var el=document.getElementById('o1');if(el)el.focus();},50);
+  }
   finally{btn.textContent=orig;btn.classList.remove('btn-loading');}
 }
 
@@ -1050,9 +1066,11 @@ async function submitRegistration(){
     if (msg.indexOf('already been registered') !== -1 || msg.indexOf('already exists') !== -1 || msg.indexOf('duplicate') !== -1 || (err.code && err.code === '23505')) {
       showSubmitErr('An account with this email or mobile already exists. <a href="/Opti-eye-care/login.html" style="color:#A32D2D;font-weight:600;text-decoration:underline;">Login instead</a>');
 
-    // Session expired during registration
+    // Session expired during registration — clear session and redirect to step 1
     } else if (msg.indexOf('session') !== -1 || msg.indexOf('JWT') !== -1 || msg.indexOf('expired') !== -1) {
-      showSubmitErr('Your session expired. Please go back to Step 1 and verify your mobile again.');
+      sb.auth.signOut();
+      clearDraft();
+      showSubmitErr('Your session expired. Please <a href="/Opti-eye-care/index.html" style="color:#A32D2D;font-weight:600;text-decoration:underline;">start registration again</a>.');
 
     // Network error
     } else if (msg.indexOf('fetch') !== -1 || msg.indexOf('network') !== -1 || msg.indexOf('Failed to fetch') !== -1) {
@@ -1093,7 +1111,8 @@ async function checkSession(){
     var existing=await sb.from('profiles').select('id').eq('id',user.id).maybeSingle();
 
     if(existing.data){
-      // Fully registered — send to dashboard
+      // Fully registered — clear any stale draft and send to dashboard
+      clearDraftOnSuccess();
       window.location.href='/Opti-eye-care/dashboard.html';
     } else {
       // Has a session (verified OTP) but no profile yet — abandoned mid-registration.
