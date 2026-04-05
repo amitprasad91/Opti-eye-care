@@ -206,16 +206,26 @@
 
   </div>
 
-  <!-- Phase 3 Coming Soon -->
-  <div class="coming-panel">
-    <div class="coming-badge">Phase 3 — Coming next</div>
-    <div class="coming-title">Smart Rx Product Matching</div>
-    <div class="coming-desc">Enter a patient's prescription once and instantly surface compatible eyewear products ranked by clinical fit, cost, and availability.</div>
-    <div class="coming-features">
-      <span class="feature-pill">Rx entry + scan</span>
-      <span class="feature-pill">Auto-detect lens type</span>
-      <span class="feature-pill">Brand comparison</span>
-      <span class="feature-pill">Availability filters</span>
+  <!-- Rx Panel -->
+  <div class="panel" id="rxPanel" style="margin-bottom:20px;">
+    <div class="panel-title" style="justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="panel-icon" style="background:var(--blue-50);">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#378ADD" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="6" r="4"/><path d="M10 10l4 4"/></svg>
+        </div>
+        Recent prescriptions
+      </div>
+      <a href="/Opti-eye-care/rx.html" style="font-size:13px;font-weight:500;color:var(--blue-400);text-decoration:none;display:inline-flex;align-items:center;gap:4px;">
+        + New Rx
+      </a>
+    </div>
+    <div id="dashRxList">
+      <div style="text-align:center;padding:24px 0;font-size:13px;color:var(--text-muted);">Loading recent prescriptions...</div>
+    </div>
+    <div style="margin-top:12px;">
+      <a href="/Opti-eye-care/rx.html" style="display:block;text-align:center;padding:10px;background:var(--blue-400);color:#fff;border-radius:var(--radius-sm);font-size:14px;font-weight:500;text-decoration:none;">
+        Open Rx Matching
+      </a>
     </div>
   </div>
 
@@ -408,6 +418,37 @@ async function loadDashboard() {
   } catch(err) { console.error('Dashboard error:',err); }
 }
 
+async function loadDashRxHistory() {
+  if (!_userId) return;
+  var r = await sb.from('prescriptions').select('*')
+    .eq('profile_id', _userId)
+    .order('created_at', {ascending: false})
+    .limit(5);
+  var el = document.getElementById('dashRxList');
+  if (!el) return;
+  if (!r.data || r.data.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:20px 0;font-size:13px;color:var(--text-muted);">No prescriptions yet. <a href="/Opti-eye-care/rx.html" style="color:var(--blue-400);font-weight:500;">Create your first Rx</a></div>';
+    return;
+  }
+  var TYPE_LABELS = {myopia:'Myopia',hyperopia:'Hyperopia',astigmatism:'Astigmatism',presbyopia:'Presbyopia',compound:'Compound',plano:'Plano'};
+  var TYPE_COLORS = {myopia:'#0C447C',hyperopia:'#27500A',astigmatism:'#633806',presbyopia:'#3C3489',compound:'#791F1F',plano:'#444441'};
+  var TYPE_BG     = {myopia:'#E6F1FB',hyperopia:'#EAF3DE',astigmatism:'#FAEEDA',presbyopia:'#EEEDFE',compound:'#FCEBEB',plano:'#F1EFE8'};
+  var fmtV = function(v){ return v!==null&&v!==undefined?(v>0?'+'+v:''+v):'—'; };
+  el.innerHTML = r.data.map(function(rx) {
+    var date = new Date(rx.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);gap:12px;" class="detail-row">'+
+      '<div>'+
+        '<div style="font-size:13px;font-weight:500;color:var(--text-primary);">'+(rx.patient_name||'Unnamed patient')+
+          ' <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:'+TYPE_BG[rx.rx_type]+';color:'+TYPE_COLORS[rx.rx_type]+'">'+(TYPE_LABELS[rx.rx_type]||rx.rx_type)+'</span>'+
+        '</div>'+
+        '<div style="font-size:11px;font-family:monospace;color:var(--text-muted);margin-top:2px;">OD '+fmtV(rx.od_sphere)+'/'+fmtV(rx.od_cylinder)+' &nbsp; OS '+fmtV(rx.os_sphere)+'/'+fmtV(rx.os_cylinder)+'</div>'+
+        '<div style="font-size:11px;color:var(--text-muted);">'+date+'</div>'+
+      '</div>'+
+      '<a href="/Opti-eye-care/rx.html" style="font-size:12px;font-weight:500;color:var(--blue-400);text-decoration:none;white-space:nowrap;">Match &#8594;</a>'+
+    '</div>';
+  }).join('');
+}
+
 // ── Modal helpers ─────────────────────────────────────────────────────
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 function showToast(msg) {
@@ -442,6 +483,7 @@ async function savePersonal() {
     _profileData=Object.assign({},_profileData,{first_name:fn,last_name:ln,email:em});
     closeModal('modalPersonal');
     loadDashboard();
+loadDashRxHistory();
     showToast('Personal info updated.');
   } catch(err){errEl.textContent=err.message||'Save failed.';errEl.classList.add('show');}
   finally{btn.textContent='Save changes';btn.classList.remove('loading');}
