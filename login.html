@@ -356,9 +356,14 @@ async function verifyLoginOtp() {
       setTimeout(function(){ window.location.href='/Opti-eye-care/index.html'; }, 2500);
     }
   } catch(err) {
+    var msg = err.message || '';
     var e = document.getElementById('otpErr');
-    e.textContent = err.message || 'Invalid code. Try again.'; e.classList.add('show');
+    var friendly = msg.indexOf('expired') !== -1 || msg.indexOf('invalid') !== -1
+      ? 'Code expired or invalid. Click Resend to get a new one.'
+      : msg || 'Invalid code. Try again.';
+    e.textContent = friendly; e.classList.add('show');
     clearOtp();
+    setTimeout(function(){ var el=document.getElementById('p1');if(el)el.focus(); }, 50);
   } finally {
     btn.textContent = 'Verify & login'; btn.classList.remove('loading');
   }
