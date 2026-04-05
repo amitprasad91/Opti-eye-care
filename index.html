@@ -920,10 +920,53 @@ function hideOtp(){document.getElementById('otpOverlay').classList.remove('show'
 async function continueStep1(){
   if(!validateStep1())return;
   var btn=document.querySelector('#step1 .btn-next');
-  var orig=btn.textContent;btn.textContent='Sending code…';btn.classList.add('btn-loading');
+  var orig=btn.textContent;btn.textContent='Checking…';btn.classList.add('btn-loading');
   var mob=document.getElementById('mobile').value.trim();
   var fmt=mob.startsWith('+')?mob:'+91'+mob.replace(/\D/g,'');
-  try{var r=await sb.auth.signInWithOtp({phone:fmt});if(r.error)throw r.error;showOtp(fmt);}
+
+  try{
+    // Check if mobile already registered BEFORE sending OTP
+    var existing=await sb.from('profiles').select('id,mobile').eq('mobile',mob.replace(/\D/g,'').slice(-10)).maybeSingle();
+    if(!existing.data){
+      // Also check with full formatted number
+      existing=await sb.from('profiles').select('id,mobile').eq('mobile',fmt).maybeSingle();
+    }
+
+    if(existing.data){
+      // Mobile already registered — block and tell user to login
+      var errDiv=document.getElementById('mobileAlreadyErr');
+      if(!errDiv){
+        errDiv=document.createElement('div');
+        errDiv.id='mobileAlreadyErr';
+        errDiv.style.cssText='background:#FAEEDA;color:#633806;border:1px solid #EF9F27;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;line-height:1.6;';
+        var mobField=document.getElementById('mobile').closest('.field-group');
+        if(mobField)mobField.insertAdjacentElement('beforebegin',errDiv);
+      }
+      errDiv.innerHTML='This mobile number is already registered. <a href="/Opti-eye-care/login.html" style="color:#633806;font-weight:600;text-decoration:underline;">Login instead →</a>';
+      errDiv.style.display='block';
+      document.getElementById('mobile').classList.add('invalid');
+      window.scrollTo(0,0);
+      return;
+    }
+
+    // Also check email
+    var em=document.getElementById('email').value.trim();
+    var emailExists=await sb.from('profiles').select('id').eq('email',em).maybeSingle();
+    if(emailExists.data){
+      setErr('email','This email is already registered. <a href="/Opti-eye-care/login.html" style="color:#A32D2D;font-weight:600;text-decoration:underline;">Login instead</a>');
+      document.getElementById('email').classList.add('invalid');
+      return;
+    }
+
+    // All clear — send OTP
+    btn.textContent='Sending code…';
+    var r=await sb.auth.signInWithOtp({phone:fmt});
+    if(r.error)throw r.error;
+    // Hide any previous error
+    var prev=document.getElementById('mobileAlreadyErr');
+    if(prev)prev.style.display='none';
+    showOtp(fmt);
+  }
   catch(err){setErr('mobile',err.message||'Could not send OTP. Check the number.');}
   finally{btn.textContent=orig;btn.classList.remove('btn-loading');}
 }
@@ -939,22 +982,8 @@ async function verifyOtp(){
   try{
     var r=await sb.auth.verifyOtp({phone:fmt,token:code,type:'sms'});
     if(r.error)throw r.error;
-
-    // Check if this phone already has a completed profile
-    var existing = await sb.from('profiles').select('id').eq('id', r.data.user.id).single();
-    if (existing.data) {
-      // User already registered — redirect to dashboard
-      hideOtp();
-      var banner = document.createElement('div');
-      banner.style.cssText = 'background:#EAF3DE;color:#27500A;border:1px solid #97C459;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;';
-      banner.innerHTML = 'Welcome back! You already have an account. <a href="/Opti-eye-care/dashboard.html" style="color:#27500A;font-weight:600;text-decoration:underline;">Go to dashboard</a>';
-      var step1 = document.getElementById('step1');
-      if (step1) step1.insertBefore(banner, step1.firstChild);
-      window.scrollTo(0,0);
-    } else {
-      hideOtp();
-      goTo(2);
-    }
+    hideOtp();
+    goTo(2);
   }
   catch(err){document.getElementById('otpError').textContent=err.message||'Invalid code. Try again.';}
   finally{btn.textContent=orig;btn.classList.remove('btn-loading');}
