@@ -278,40 +278,12 @@ async function sendLoginOtp() {
   }
   document.getElementById('loginMobile').classList.remove('invalid');
   var btn = document.getElementById('sendOtpBtn');
-  btn.textContent = 'Checking…'; btn.classList.add('loading');
+  btn.textContent = 'Sending…'; btn.classList.add('loading');
   var fmt = formatMobile(mob);
-  var last10 = mob.replace(/\D/g,'').slice(-10);
   try {
-    // Normalise — extract last 10 digits for comparison
-    // Try all common storage formats: 9876543210, 919876543210, +919876543210
-    var digits10  = last10;                          // 9876543210
-    var digits12  = '91' + last10;                  // 919876543210
-    var withPlus  = '%2B91' + last10;               // URL-encoded +91 (avoids + being treated as space)
-
-    // Use separate queries to avoid + sign corruption in .or() PostgREST filter
-    var check = await sb.from('profiles').select('id').eq('mobile', digits10).maybeSingle();
-    if (!check.data) {
-      check = await sb.from('profiles').select('id').eq('mobile', digits12).maybeSingle();
-    }
-    if (!check.data) {
-      // Try with actual +91 prefix
-      check = await sb.from('profiles').select('id').eq('mobile', '+91' + last10).maybeSingle();
-    }
-    if (!check.data) {
-      // Final fallback: search by last 10 digits using ilike
-      var likeCheck = await sb.from('profiles').select('id,mobile').ilike('mobile', '%' + last10);
-      if (likeCheck.data && likeCheck.data.length > 0) check = { data: likeCheck.data[0] };
-    }
-
-    if (!check.data) {
-      var e = document.getElementById('phoneErr');
-      e.innerHTML = 'This number is not registered. <a href="/Opti-eye-care/index.html" style="color:#A32D2D;font-weight:600;text-decoration:underline;">Create an account →</a>';
-      e.classList.add('show');
-      return;
-    }
-
-    // Registered — send OTP
-    btn.textContent = 'Sending…';
+    // Send OTP directly — Supabase handles whether number exists in auth.users
+    // We can't pre-check profiles table (RLS blocks unauthenticated reads)
+    // If number isn't registered, verifyOtp will fail with a clear error
     var r = await sb.auth.signInWithOtp({ phone: fmt });
     if (r.error) throw r.error;
     document.getElementById('phoneStep1').style.display = 'none';
@@ -441,17 +413,19 @@ async function verifyLoginOtp() {
   try {
     var r = await sb.auth.verifyOtp({ phone: fmt, token: code, type: 'sms' });
     if (r.error) throw r.error;
-    // Verify profile exists before redirecting
+    // Now authenticated — check if this number has a completed profile
+    // This query works NOW because we have a session after verifyOtp
     var profile = await sb.from('profiles').select('id').eq('id', r.data.user.id).maybeSingle();
     if (profile.data) {
+      // Registered user — go to dashboard
       window.location.href = '/Opti-eye-care/dashboard.html';
     } else {
-      // Has auth but no profile — something went wrong, send to register
+      // OTP verified but no profile — number exists in auth but not registered in our app
       await sb.auth.signOut();
       var e = document.getElementById('otpErr');
-      e.textContent = 'Account not found. Please register first.';
+      e.innerHTML = 'This number is not registered with OptiReg. <a href="/Opti-eye-care/index.html" style="color:#A32D2D;font-weight:600;text-decoration:underline;">Create an account →</a>';
       e.classList.add('show');
-      setTimeout(function(){ window.location.href='/Opti-eye-care/index.html'; }, 2500);
+      clearOtp();
     }
   } catch(err) {
     var msg = err.message || '';
