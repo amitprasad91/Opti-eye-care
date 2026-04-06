@@ -206,9 +206,13 @@
       <div class="detail-row"><span class="detail-label">Location</span><span class="detail-value" id="dLocation">—</span></div>
     </div>
 
-    <div class="panel" style="display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;background:var(--gray-100);border-style:dashed;">
-      <div style="font-size:13px;font-weight:500;color:var(--text-muted);margin-bottom:6px;">More panels coming in Phase 3</div>
-      <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">Rx matching, product recommendations,<br>and peer network.</div>
+    <div class="panel" style="display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;background:var(--blue-50);border-color:var(--blue-100);">
+      <div style="width:40px;height:40px;border-radius:10px;background:var(--blue-400);display:flex;align-items:center;justify-content:center;margin-bottom:12px;">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4"/><path d="M12 12l5 5"/><path d="M3 11h8M7 7v4"/></svg>
+      </div>
+      <div style="font-size:14px;font-weight:600;color:var(--blue-900);margin-bottom:6px;">Rx Matching</div>
+      <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:14px;">Enter a prescription and instantly find compatible lens products.</div>
+      <a href="/Opti-eye-care/rx.html" style="display:inline-block;padding:8px 20px;background:var(--blue-400);color:#fff;border-radius:var(--radius-sm);font-size:13px;font-weight:500;text-decoration:none;">Open Rx Matching</a>
     </div>
 
   </div>
@@ -487,7 +491,7 @@ async function savePersonal() {
   if(!em||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){errEl.textContent='Enter a valid email.';errEl.classList.add('show');return;}
   btn.textContent='Saving…';btn.classList.add('loading');
   try {
-    var r=await sb.from('profiles').update({first_name:fn,last_name:ln,email:em}).eq('id',_userId);
+    var r=await sb.from('profiles').upsert({id:_userId,first_name:fn,last_name:ln,email:em},{onConflict:'id'});
     if(r.error)throw r.error;
     if(em!==(_profileData&&_profileData.email)) await sb.auth.updateUser({email:em});
     _profileData=Object.assign({},_profileData,{first_name:fn,last_name:ln,email:em});
@@ -519,12 +523,13 @@ async function saveProfessional() {
   errEl.classList.remove('show');
   btn.textContent='Saving…';btn.classList.add('loading');
   try {
-    var r=await sb.from('professional_details').update({
+    var r=await sb.from('professional_details').upsert({
+      profile_id:   _userId,
       role_type:    document.getElementById('editRoleType').value,
       specialisation: document.getElementById('editSpec').value,
       qualification:  document.getElementById('editQual').value,
       experience_years: parseInt(document.getElementById('editExp').value)||0,
-    }).eq('profile_id',_userId);
+    },{onConflict:'profile_id'});
     if(r.error)throw r.error;
     closeModal('modalProfessional');
     loadDashboard();
@@ -554,14 +559,15 @@ async function savePractice() {
   if(pin&&!/^\d{6}$/.test(pin)){errEl.textContent='PIN code must be exactly 6 digits.';errEl.classList.add('show');return;}
   btn.textContent='Saving…';btn.classList.add('loading');
   try {
-    var r=await sb.from('practice_info').update({
+    var r=await sb.from('practice_info').upsert({
+      profile_id:          _userId,
       organisation_name:   document.getElementById('editOrg').value.trim(),
       practice_type:       document.getElementById('editPtype').value,
       daily_patient_load:  document.getElementById('editLoad').value,
       city:                document.getElementById('editCity').value.trim(),
       state:               document.getElementById('editState').value,
       pin_code:            pin||null,
-    }).eq('profile_id',_userId);
+    },{onConflict:'profile_id'});
     if(r.error)throw r.error;
     closeModal('modalPractice');
     loadDashboard();
