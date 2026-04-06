@@ -224,6 +224,9 @@ sb.auth.getSession().then(function(r) {
   } else {
     document.body.style.visibility = 'visible';
   }
+}).catch(function() {
+  // Show page even if Supabase fails — user can still attempt login
+  document.body.style.visibility = 'visible';
 });
 
 // ── Tab switching ─────────────────────────────

@@ -383,11 +383,24 @@ var _history = []; // Cache for Rx history — referenced by index to avoid inli
 
 // ── Auth guard ────────────────────────────────────────────────
 sb.auth.getSession().then(function(r) {
-  if (!r.data || !r.data.session) { window.location.replace('/Opti-eye-care/login.html'); return; }
+  if (!r.data || !r.data.session) {
+    window.location.replace('/Opti-eye-care/login.html');
+    return;
+  }
   _userId = r.data.session.user.id;
   document.body.style.visibility = 'visible';
   loadProducts();
   loadHistory();
+}).catch(function(err) {
+  // If Supabase fails (bad key, network, SDK not loaded) — show page anyway
+  // so user sees an error rather than a blank white screen
+  console.error('Auth error:', err);
+  document.body.style.visibility = 'visible';
+  var banner = document.getElementById('errBanner');
+  if (banner) {
+    banner.textContent = 'Could not connect to the server. Please check your internet connection and refresh.';
+    banner.classList.add('show');
+  }
 });
 
 // ── Load products from Supabase ───────────────────────────────

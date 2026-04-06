@@ -482,7 +482,10 @@ async function savePersonal() {
     if(em!==(_profileData&&_profileData.email)) await sb.auth.updateUser({email:em});
     _profileData=Object.assign({},_profileData,{first_name:fn,last_name:ln,email:em});
     closeModal('modalPersonal');
-    loadDashboard();
+    loadDashboard().catch(function(err) {
+  console.error('Dashboard load error:', err);
+  document.body.style.visibility = 'visible';
+});
 loadDashRxHistory();
     showToast('Personal info updated.');
   } catch(err){errEl.textContent=err.message||'Save failed.';errEl.classList.add('show');}
