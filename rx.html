@@ -379,6 +379,7 @@ var _compareSet = [];
 var _activeFilter = 'all';
 var _currentRx = null;
 var _userId = null;
+var _history = []; // Cache for Rx history — referenced by index to avoid inline JSON
 
 // ── Auth guard ────────────────────────────────────────────────
 sb.auth.getSession().then(function(r) {
@@ -762,12 +763,13 @@ async function loadHistory() {
   if (!r.data || r.data.length === 0) return;
   document.getElementById('historyCard').style.display = 'block';
   var list = document.getElementById('historyList');
-  list.innerHTML = r.data.map(function(rx) {
+  _history = r.data;
+  list.innerHTML = r.data.map(function(rx, i) {
     var date = new Date(rx.created_at).toLocaleDateString('en-IN', {day:'numeric',month:'short'});
     var fmtV = function(v){ return v!==null&&v!==undefined?(v>0?'+'+v:''+v):'—'; };
     var rxStr = 'OD: '+fmtV(rx.od_sphere)+'/'+fmtV(rx.od_cylinder)+' | OS: '+fmtV(rx.os_sphere)+'/'+fmtV(rx.os_cylinder);
     var typeClass = TYPE_CLASS[rx.rx_type] || '';
-    return '<div class="history-item" onclick="loadHistoryRx('+JSON.stringify(rx).replace(/"/g,"'")+')">'+
+    return '<div class="history-item" onclick="loadHistoryByIndex('+i+')">'+
       '<div>'+
         '<div class="rx-mini-row" style="margin:0;gap:8px;">'+
           (rx.patient_name?'<span style="font-size:13px;font-weight:500;color:var(--text-primary);">'+rx.patient_name+'</span>':'<span style="font-size:13px;color:var(--text-muted);">Unnamed patient</span>')+
@@ -776,7 +778,7 @@ async function loadHistory() {
         '<div class="history-rx" style="margin-top:4px;">'+rxStr+'</div>'+
         '<div class="history-meta">'+date+'</div>'+
       '</div>'+
-      '<button class="history-match-btn" onclick="event.stopPropagation();loadHistoryRxAndMatch('+JSON.stringify(rx).replace(/"/g,"'")+')">Match &#8594;</button>'+
+      '<button class="history-match-btn" onclick="event.stopPropagation();loadHistoryByIndexAndMatch('+i+')">Match &#8594;</button>'+
     '</div>';
   }).join('');
 }
@@ -808,6 +810,14 @@ function clearRx() {
   document.getElementById('rxTypeBadge').innerHTML = '';
   _currentRx = null;
   clearErr();
+}
+
+// Index-based wrappers — safe to use in onclick, avoids JSON-in-HTML issues
+function loadHistoryByIndex(i) {
+  if (_history[i]) loadHistoryRx(_history[i]);
+}
+function loadHistoryByIndexAndMatch(i) {
+  if (_history[i]) loadHistoryRxAndMatch(_history[i]);
 }
 
 function showErr(msg) {
