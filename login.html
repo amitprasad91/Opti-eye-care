@@ -494,7 +494,13 @@ async function emailLogin() {
     if (msg.indexOf('Invalid login credentials') !== -1 || msg.indexOf('invalid') !== -1) {
       e.textContent = 'Incorrect email or password. Please try again.';
     } else if (msg.indexOf('Email not confirmed') !== -1) {
-      e.innerHTML = 'Your email is not confirmed yet. Check your inbox, or <a onclick="switchTab('phone')" style="color:#A32D2D;font-weight:600;cursor:pointer;text-decoration:underline;">use mobile OTP instead</a>.';
+      e.textContent = 'Your email is not confirmed yet. Check your inbox, or use Mobile OTP tab to login.';
+      // Add clickable link to switch tab safely via DOM
+      var link = document.createElement('a');
+      link.textContent = ' Switch to mobile OTP';
+      link.style.cssText = 'color:#A32D2D;font-weight:600;cursor:pointer;text-decoration:underline;';
+      link.onclick = function() { switchTab('phone'); };
+      e.appendChild(link);
     } else if (msg.indexOf('fetch') !== -1 || msg.indexOf('network') !== -1) {
       e.textContent = 'Could not connect. Check your internet and try again.';
     } else {
