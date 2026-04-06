@@ -282,13 +282,28 @@ async function sendLoginOtp() {
   var fmt = formatMobile(mob);
   var last10 = mob.replace(/\D/g,'').slice(-10);
   try {
-    // Check if mobile is registered before sending OTP
-    var check = await sb.from('profiles').select('id')
-      .or('mobile.eq.'+last10+',mobile.eq.+91'+last10+',mobile.eq.91'+last10)
-      .maybeSingle();
+    // Normalise — extract last 10 digits for comparison
+    // Try all common storage formats: 9876543210, 919876543210, +919876543210
+    var digits10  = last10;                          // 9876543210
+    var digits12  = '91' + last10;                  // 919876543210
+    var withPlus  = '%2B91' + last10;               // URL-encoded +91 (avoids + being treated as space)
+
+    // Use separate queries to avoid + sign corruption in .or() PostgREST filter
+    var check = await sb.from('profiles').select('id').eq('mobile', digits10).maybeSingle();
+    if (!check.data) {
+      check = await sb.from('profiles').select('id').eq('mobile', digits12).maybeSingle();
+    }
+    if (!check.data) {
+      // Try with actual +91 prefix
+      check = await sb.from('profiles').select('id').eq('mobile', '+91' + last10).maybeSingle();
+    }
+    if (!check.data) {
+      // Final fallback: search by last 10 digits using ilike
+      var likeCheck = await sb.from('profiles').select('id,mobile').ilike('mobile', '%' + last10);
+      if (likeCheck.data && likeCheck.data.length > 0) check = { data: likeCheck.data[0] };
+    }
 
     if (!check.data) {
-      // Not registered — block login, show register link
       var e = document.getElementById('phoneErr');
       e.innerHTML = 'This number is not registered. <a href="/Opti-eye-care/index.html" style="color:#A32D2D;font-weight:600;text-decoration:underline;">Create an account →</a>';
       e.classList.add('show');
@@ -479,7 +494,7 @@ async function emailLogin() {
     if (msg.indexOf('Invalid login credentials') !== -1 || msg.indexOf('invalid') !== -1) {
       e.textContent = 'Incorrect email or password. Please try again.';
     } else if (msg.indexOf('Email not confirmed') !== -1) {
-      e.textContent = 'Please verify your email first. Check your inbox for a confirmation link.';
+      e.innerHTML = 'Your email is not confirmed yet. Check your inbox, or <a onclick="switchTab('phone')" style="color:#A32D2D;font-weight:600;cursor:pointer;text-decoration:underline;">use mobile OTP instead</a>.';
     } else if (msg.indexOf('fetch') !== -1 || msg.indexOf('network') !== -1) {
       e.textContent = 'Could not connect. Check your internet and try again.';
     } else {

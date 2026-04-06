@@ -990,12 +990,20 @@ async function continueStep1(){
 
   try{
     // Normalise to last 10 digits for consistent comparison
-    var digits=mob.replace(/\D/g,'');
-    var last10=digits.slice(-10);
-    // Check all possible formats stored in DB
-    var existing=await sb.from('profiles').select('id,mobile')
-      .or('mobile.eq.'+last10+',mobile.eq.+91'+last10+',mobile.eq.91'+last10)
-      .maybeSingle();
+    var digits = mob.replace(/\D/g,'');
+    var last10  = digits.slice(-10);
+    // Use separate queries to avoid + sign being URL-encoded as space in .or()
+    var existing = await sb.from('profiles').select('id,mobile').eq('mobile', last10).maybeSingle();
+    if (!existing.data) {
+      existing = await sb.from('profiles').select('id,mobile').eq('mobile', '91' + last10).maybeSingle();
+    }
+    if (!existing.data) {
+      existing = await sb.from('profiles').select('id,mobile').eq('mobile', '+91' + last10).maybeSingle();
+    }
+    if (!existing.data) {
+      var likeRes = await sb.from('profiles').select('id,mobile').ilike('mobile', '%' + last10);
+      if (likeRes.data && likeRes.data.length > 0) existing = { data: likeRes.data[0] };
+    }
 
     if(existing.data){
       // Mobile already registered — block and tell user to login
