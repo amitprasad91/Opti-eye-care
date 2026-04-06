@@ -1,3 +1,4 @@
+
 # OptiReg — Eye-Care Professional Platform
 
 A clinical-grade registration, authentication and Rx-powered product intelligence platform for eye-care professionals. Mobile-first, zero cost to run.
