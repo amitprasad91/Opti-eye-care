@@ -266,7 +266,7 @@ async function loadDashboard() {
     document.getElementById('navEmail').textContent = user.email || '';
 
     // Load profile
-    var pr = await sb.from('profiles').select('*').eq('id', user.id).single();
+    var pr = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
     if (!pr.data) {
       // Authenticated but no profile row — account incomplete
       document.getElementById('welcomeName').textContent = 'Account setup incomplete';
@@ -295,7 +295,7 @@ async function loadDashboard() {
     }
 
     // Load professional details
-    var pd = await sb.from('professional_details').select('*').eq('profile_id', user.id).single();
+    var pd = await sb.from('professional_details').select('*').eq('profile_id', user.id).maybeSingle();
     if (pd.data) {
       var d = pd.data;
       var roleLabel = d.role_type === 'student' ? 'Student' : 'Working professional';
@@ -319,7 +319,7 @@ async function loadDashboard() {
     }
 
     // Load practice info
-    var pi = await sb.from('practice_info').select('*').eq('profile_id', user.id).single();
+    var pi = await sb.from('practice_info').select('*').eq('profile_id', user.id).maybeSingle();
     if (pi.data) {
       var info = pi.data;
       var ptLabel = ptypeLabels[info.practice_type] || info.practice_type || '—';
@@ -367,7 +367,7 @@ async function loadDashboard() {
     var isEmailConfirmed = !!(user.email_confirmed_at || user.confirmed_at);
     setTimeout(function() { updateEmailBadge(user.email, isEmailConfirmed); }, 600);
 
-    var pr = await sb.from('profiles').select('*').eq('id', user.id).single();
+    var pr = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
     if (!pr.data) {
       // Authenticated but no profile row — account incomplete
       document.getElementById('welcomeName').textContent = 'Account setup incomplete';
@@ -395,7 +395,7 @@ async function loadDashboard() {
       set('dJoined',joined);
     }
 
-    var pd = await sb.from('professional_details').select('*').eq('profile_id', user.id).single();
+    var pd = await sb.from('professional_details').select('*').eq('profile_id', user.id).maybeSingle();
     if (pd.data) {
       _profData = pd.data;
       var d = pd.data;
@@ -410,7 +410,7 @@ async function loadDashboard() {
       } else { var row=document.getElementById('dExpRow');if(row)row.style.display='none'; }
     }
 
-    var pi = await sb.from('practice_info').select('*').eq('profile_id', user.id).single();
+    var pi = await sb.from('practice_info').select('*').eq('profile_id', user.id).maybeSingle();
     if (pi.data) {
       _practData = pi.data;
       var info = pi.data;
@@ -484,7 +484,13 @@ async function savePersonal() {
   if(!em||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){errEl.textContent='Enter a valid email.';errEl.classList.add('show');return;}
   btn.textContent='Saving…';btn.classList.add('loading');
   try {
-    var r=await sb.from('profiles').upsert({id:_userId,first_name:fn,last_name:ln,email:em},{onConflict:'id'});
+    // Use update() — profiles row always exists after registration
+    // Include all non-null fields to avoid constraint violations
+    var r=await sb.from('profiles').update({
+      first_name: fn,
+      last_name:  ln,
+      email:      em,
+    }).eq('id', _userId);
     if(r.error)throw r.error;
     if(em!==(_profileData&&_profileData.email)) await sb.auth.updateUser({email:em});
     _profileData=Object.assign({},_profileData,{first_name:fn,last_name:ln,email:em});
@@ -516,14 +522,21 @@ async function saveProfessional() {
   errEl.classList.remove('show');
   btn.textContent='Saving…';btn.classList.add('loading');
   try {
-    var r=await sb.from('professional_details').upsert({
-      profile_id:   _userId,
-      role_type:    document.getElementById('editRoleType').value,
-      specialisation: document.getElementById('editSpec').value,
-      qualification:  document.getElementById('editQual').value,
+    var profData = {
+      role_type:        document.getElementById('editRoleType').value,
+      specialisation:   document.getElementById('editSpec').value,
+      qualification:    document.getElementById('editQual').value,
       experience_years: parseInt(document.getElementById('editExp').value)||0,
-    },{onConflict:'profile_id'});
-    if(r.error)throw r.error;
+    };
+    // Try update first; if no row exists (0 rows affected), insert
+    var upd = await sb.from('professional_details').update(profData).eq('profile_id', _userId);
+    if(upd.error) throw upd.error;
+    // Check if row was actually updated — if not, insert it
+    var existing = await sb.from('professional_details').select('id').eq('profile_id',_userId).maybeSingle();
+    if(!existing.data) {
+      var ins = await sb.from('professional_details').insert(Object.assign({profile_id:_userId}, profData));
+      if(ins.error) throw ins.error;
+    }
     closeModal('modalProfessional');
     loadDashboard();
     showToast('Professional details updated.');
@@ -552,16 +565,22 @@ async function savePractice() {
   if(pin&&!/^\d{6}$/.test(pin)){errEl.textContent='PIN code must be exactly 6 digits.';errEl.classList.add('show');return;}
   btn.textContent='Saving…';btn.classList.add('loading');
   try {
-    var r=await sb.from('practice_info').upsert({
-      profile_id:          _userId,
-      organisation_name:   document.getElementById('editOrg').value.trim(),
-      practice_type:       document.getElementById('editPtype').value,
-      daily_patient_load:  document.getElementById('editLoad').value,
-      city:                document.getElementById('editCity').value.trim(),
-      state:               document.getElementById('editState').value,
-      pin_code:            pin||null,
-    },{onConflict:'profile_id'});
-    if(r.error)throw r.error;
+    var pracData = {
+      organisation_name:  document.getElementById('editOrg').value.trim(),
+      practice_type:      document.getElementById('editPtype').value,
+      daily_patient_load: document.getElementById('editLoad').value,
+      city:               document.getElementById('editCity').value.trim(),
+      state:              document.getElementById('editState').value,
+      pin_code:           pin||null,
+    };
+    // Try update first; if no row exists, insert
+    var upd = await sb.from('practice_info').update(pracData).eq('profile_id', _userId);
+    if(upd.error) throw upd.error;
+    var existing = await sb.from('practice_info').select('id').eq('profile_id',_userId).maybeSingle();
+    if(!existing.data) {
+      var ins = await sb.from('practice_info').insert(Object.assign({profile_id:_userId}, pracData));
+      if(ins.error) throw ins.error;
+    }
     closeModal('modalPractice');
     loadDashboard();
     showToast('Practice details updated.');
