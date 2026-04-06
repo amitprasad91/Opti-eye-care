@@ -166,7 +166,14 @@
         <button class="edit-btn" onclick="showEditPersonal()">Edit</button>
       </div>
       <div class="detail-row"><span class="detail-label">Full name</span><span class="detail-value" id="dFullName">—</span></div>
-      <div class="detail-row"><span class="detail-label">Email</span><span class="detail-value" id="dEmail" style="word-break:break-all;">—</span></div>
+      <div class="detail-row" id="emailDetailRow">
+          <span class="detail-label">Email</span>
+          <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span class="detail-value" id="dEmail" style="word-break:break-all;">—</span>
+            <span id="emailVerifiedBadge" style="display:none;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;"></span>
+            <button id="emailResendBtn" onclick="resendVerificationEmail()" style="display:none;font-size:11px;font-weight:500;color:#A32D2D;background:none;border:1px solid #F09595;border-radius:6px;padding:2px 8px;cursor:pointer;font-family:inherit;">Verify now</button>
+          </span>
+        </div>
       <div class="detail-row"><span class="detail-label">Mobile</span><span class="detail-value" id="dMobile">—</span></div>
       <div class="detail-row"><span class="detail-label">Member since</span><span class="detail-value" id="dJoined">—</span></div>
     </div>
@@ -359,6 +366,9 @@ async function loadDashboard() {
     document.body.style.visibility = 'visible';
     _userId = user.id;
     document.getElementById('navEmail').textContent = user.email || '';
+    // Check email verification — email_confirmed_at is null if not confirmed
+    var isEmailConfirmed = !!(user.email_confirmed_at || user.confirmed_at);
+    setTimeout(function() { updateEmailBadge(user.email, isEmailConfirmed); }, 600);
 
     var pr = await sb.from('profiles').select('*').eq('id', user.id).single();
     if (!pr.data) {
@@ -558,6 +568,50 @@ async function savePractice() {
     showToast('Practice details updated.');
   } catch(err){errEl.textContent=err.message||'Save failed.';errEl.classList.add('show');}
   finally{btn.textContent='Save changes';btn.classList.remove('loading');}
+}
+
+// ── Email verification badge ─────────────────────────────────
+function updateEmailBadge(email, isConfirmed) {
+  var badge    = document.getElementById('emailVerifiedBadge');
+  var resendBtn = document.getElementById('emailResendBtn');
+  if (!badge || !email) return;
+
+  badge.style.display = 'inline';
+  if (isConfirmed) {
+    badge.textContent = '✓ Verified';
+    badge.style.background = '#EAF3DE';
+    badge.style.color = '#27500A';
+    if (resendBtn) resendBtn.style.display = 'none';
+  } else {
+    badge.textContent = '✗ Not verified';
+    badge.style.background = '#FCEBEB';
+    badge.style.color = '#A32D2D';
+    if (resendBtn) resendBtn.style.display = 'inline';
+  }
+}
+
+async function resendVerificationEmail() {
+  var btn = document.getElementById('emailResendBtn');
+  var email = document.getElementById('dEmail').textContent;
+  if (!email || email === '—') return;
+  btn.textContent = 'Sending…'; btn.disabled = true;
+  try {
+    var r = await sb.auth.resend({ type: 'signup', email: email });
+    if (r.error) throw r.error;
+    btn.textContent = 'Email sent!';
+    btn.style.color = '#27500A';
+    btn.style.borderColor = '#97C459';
+    setTimeout(function() {
+      btn.textContent = 'Verify now';
+      btn.style.color = '#A32D2D';
+      btn.style.borderColor = '#F09595';
+      btn.disabled = false;
+    }, 4000);
+  } catch(err) {
+    btn.textContent = 'Try again';
+    btn.disabled = false;
+    showToast('Could not send verification email. Please try again.');
+  }
 }
 
 // Close modal on overlay click

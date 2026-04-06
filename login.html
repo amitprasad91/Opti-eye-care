@@ -465,33 +465,71 @@ async function emailLogin() {
   } catch(err) {
     var e = document.getElementById('emailErr');
     var msg = err.message || '';
+    console.warn('Email login error:', msg);
 
     if (msg.indexOf('fetch') !== -1 || msg.indexOf('network') !== -1 || msg.indexOf('Failed') !== -1) {
       e.textContent = 'Could not connect. Check your internet and try again.';
       e.classList.add('show');
+    } else if (msg.indexOf('Email not confirmed') !== -1 || msg.indexOf('not confirmed') !== -1) {
+      // Email exists but not confirmed — show resend option
+      showEmailNotConfirmed(em, e);
+    } else if (msg.indexOf('Invalid login credentials') !== -1 || msg.indexOf('invalid') !== -1) {
+      // Could be wrong password OR unconfirmed email (Supabase uses same message)
+      // Try to detect by attempting a password reset email — if user exists, it succeeds
+      showEmailLoginFailed(em, e);
     } else {
-      // For all auth errors (wrong password, unconfirmed email, invalid creds)
-      // Supabase returns the same generic message — show helpful options
-      e.innerHTML = '';
-      var msg1 = document.createTextNode('Login failed. ');
-      e.appendChild(msg1);
-
-      // Option 1: use mobile OTP (always works regardless of email confirmation)
-      var otpLink = document.createElement('a');
-      otpLink.textContent = 'Try mobile OTP instead';
-      otpLink.style.cssText = 'color:#A32D2D;font-weight:600;cursor:pointer;text-decoration:underline;';
-      otpLink.onclick = function() { switchTab('phone'); };
-      e.appendChild(otpLink);
-
-      e.appendChild(document.createTextNode(' — or check your email/password and try again.'));
+      e.textContent = msg || 'Login failed. Please try again.';
       e.classList.add('show');
-
-      // Also log actual error to console for debugging
-      console.warn('Email login error:', msg);
     }
   } finally {
     btn.textContent = 'Login'; btn.classList.remove('loading');
   }
+}
+
+function showEmailNotConfirmed(email, errEl) {
+  errEl.innerHTML = '';
+  errEl.appendChild(document.createTextNode('Your email is not confirmed yet. '));
+  var resendLink = document.createElement('a');
+  resendLink.textContent = 'Resend confirmation email';
+  resendLink.style.cssText = 'color:#A32D2D;font-weight:600;cursor:pointer;text-decoration:underline;display:block;margin-top:4px;';
+  resendLink.onclick = async function() {
+    resendLink.textContent = 'Sending…';
+    try {
+      await sb.auth.resend({ type: 'signup', email: email });
+      resendLink.textContent = 'Confirmation email sent! Check your inbox.';
+      resendLink.style.color = '#1D9E75';
+    } catch(e) {
+      resendLink.textContent = 'Could not resend. Try mobile OTP instead.';
+    }
+  };
+  errEl.appendChild(resendLink);
+  var otpText = document.createElement('div');
+  otpText.style.cssText = 'margin-top:6px;font-size:12px;';
+  otpText.appendChild(document.createTextNode('Or '));
+  var otpLink = document.createElement('a');
+  otpLink.textContent = 'login with mobile OTP';
+  otpLink.style.cssText = 'color:#A32D2D;font-weight:600;cursor:pointer;text-decoration:underline;';
+  otpLink.onclick = function() { switchTab('phone'); };
+  otpText.appendChild(otpLink);
+  otpText.appendChild(document.createTextNode(' instead (no email confirmation needed).'));
+  errEl.appendChild(otpText);
+  errEl.classList.add('show');
+}
+
+function showEmailLoginFailed(email, errEl) {
+  errEl.innerHTML = '';
+  errEl.appendChild(document.createTextNode('Login failed — incorrect password, or email not confirmed yet. '));
+  var otpText = document.createElement('div');
+  otpText.style.cssText = 'margin-top:6px;font-size:12px;';
+  otpText.appendChild(document.createTextNode('You can always '));
+  var otpLink = document.createElement('a');
+  otpLink.textContent = 'login with mobile OTP';
+  otpLink.style.cssText = 'color:#A32D2D;font-weight:600;cursor:pointer;text-decoration:underline;';
+  otpLink.onclick = function() { switchTab('phone'); };
+  otpText.appendChild(otpLink);
+  otpText.appendChild(document.createTextNode(' which does not require email confirmation.'));
+  errEl.appendChild(otpText);
+  errEl.classList.add('show');
 }
 
 // ── Password toggle ───────────────────────────
