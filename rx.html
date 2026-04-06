@@ -496,7 +496,8 @@ function scoreProduct(product, rx) {
 
   // ── 4. Lens index scoring — thinner is better for higher prescriptions
   if (maxSph >= 8 || maxSph <= -8) {
-    if (product.lens_index >= 1.67) score += 30;
+    if (product.lens_index >= 1.74) score += 35;
+    else if (product.lens_index >= 1.67) score += 30;
     else if (product.lens_index >= 1.60) score += 15;
     else score += 5;
   } else if (maxSph >= 5 || maxSph <= -5) {
