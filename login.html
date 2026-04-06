@@ -465,22 +465,30 @@ async function emailLogin() {
   } catch(err) {
     var e = document.getElementById('emailErr');
     var msg = err.message || '';
-    if (msg.indexOf('Invalid login credentials') !== -1 || msg.indexOf('invalid') !== -1) {
-      e.textContent = 'Incorrect email or password. Please try again.';
-    } else if (msg.indexOf('Email not confirmed') !== -1) {
-      e.textContent = 'Your email is not confirmed yet. Check your inbox, or use Mobile OTP tab to login.';
-      // Add clickable link to switch tab safely via DOM
-      var link = document.createElement('a');
-      link.textContent = ' Switch to mobile OTP';
-      link.style.cssText = 'color:#A32D2D;font-weight:600;cursor:pointer;text-decoration:underline;';
-      link.onclick = function() { switchTab('phone'); };
-      e.appendChild(link);
-    } else if (msg.indexOf('fetch') !== -1 || msg.indexOf('network') !== -1) {
+
+    if (msg.indexOf('fetch') !== -1 || msg.indexOf('network') !== -1 || msg.indexOf('Failed') !== -1) {
       e.textContent = 'Could not connect. Check your internet and try again.';
+      e.classList.add('show');
     } else {
-      e.textContent = msg || 'Login failed. Please try again.';
+      // For all auth errors (wrong password, unconfirmed email, invalid creds)
+      // Supabase returns the same generic message — show helpful options
+      e.innerHTML = '';
+      var msg1 = document.createTextNode('Login failed. ');
+      e.appendChild(msg1);
+
+      // Option 1: use mobile OTP (always works regardless of email confirmation)
+      var otpLink = document.createElement('a');
+      otpLink.textContent = 'Try mobile OTP instead';
+      otpLink.style.cssText = 'color:#A32D2D;font-weight:600;cursor:pointer;text-decoration:underline;';
+      otpLink.onclick = function() { switchTab('phone'); };
+      e.appendChild(otpLink);
+
+      e.appendChild(document.createTextNode(' — or check your email/password and try again.'));
+      e.classList.add('show');
+
+      // Also log actual error to console for debugging
+      console.warn('Email login error:', msg);
     }
-    e.classList.add('show');
   } finally {
     btn.textContent = 'Login'; btn.classList.remove('loading');
   }
