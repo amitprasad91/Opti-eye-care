@@ -170,7 +170,7 @@
           <span class="detail-label">Email</span>
           <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <span class="detail-value" id="dEmail" style="word-break:break-all;">—</span>
-            <span id="emailVerifiedBadge" style="display:none;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;"></span>
+            <span id="emailVerifiedBadge" style="display:inline;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#F1EFE8;color:#888780;">Checking...</span>
             <button id="emailResendBtn" onclick="resendVerificationEmail()" style="display:none;font-size:11px;font-weight:500;color:#A32D2D;background:none;border:1px solid #F09595;border-radius:6px;padding:2px 8px;cursor:pointer;font-family:inherit;">Verify now</button>
           </span>
         </div>
@@ -363,9 +363,15 @@ async function loadDashboard() {
     document.body.style.visibility = 'visible';
     _userId = user.id;
     document.getElementById('navEmail').textContent = user.email || '';
-    // Check email verification — email_confirmed_at is null if not confirmed
-    var isEmailConfirmed = !!(user.email_confirmed_at || user.confirmed_at);
-    setTimeout(function() { updateEmailBadge(user.email, isEmailConfirmed); }, 600);
+    // Use getUser() for fresh data — session user may not have email_confirmed_at
+    sb.auth.getUser().then(function(res) {
+      var fullUser = res.data && res.data.user ? res.data.user : user;
+      var isEmailConfirmed = !!(fullUser.email_confirmed_at || fullUser.confirmed_at);
+      updateEmailBadge(fullUser.email || user.email, isEmailConfirmed);
+    }).catch(function() {
+      // Fallback — always show badge, assume not confirmed
+      updateEmailBadge(user.email, false);
+    });
 
     var pr = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
     if (!pr.data) {
