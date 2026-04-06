@@ -184,6 +184,9 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 .loader-text{font-size:13px;color:var(--text-secondary);}
 
 /* Mobile */
+  .btn-signout{font-size:12px;padding:6px 14px;border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,0.2);background:transparent;color:rgba(255,255,255,0.7);cursor:pointer;font-family:inherit;}
+  .btn-signout:hover{background:rgba(255,255,255,0.08);color:#fff;}
+
   @media(max-width:640px){
   .topnav{padding:0 16px;}
   #overlayHandle{display:flex!important;}
@@ -211,7 +214,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     <span class="nav-name">OptiReg</span>
   </a>
   <div class="nav-right">
-    <button class="nav-link" onclick="signOutRx()" style="background:none;border:none;cursor:pointer;font-family:inherit;font-size:13px;padding:0;">Sign out</button>
+    <button class="btn-signout" onclick="signOutRx()">Sign out</button>
   </div>
 </nav>
 
