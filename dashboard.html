@@ -235,6 +235,56 @@
 
 </div>
 
+  <!-- Analytics Panel -->
+  <div class="panel" id="analyticsPanel" style="margin-bottom:20px;display:none;">
+    <div class="panel-title">
+      <div class="panel-icon" style="background:#EEEDFE;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#3C3489" stroke-width="1.6" stroke-linecap="round"><rect x="2" y="10" width="3" height="4"/><rect x="6.5" y="6" width="3" height="8"/><rect x="11" y="2" width="3" height="12"/></svg>
+      </div>
+      Rx Analytics
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;" id="analyticsGrid">
+      <div style="background:var(--bg);border-radius:var(--radius-sm);padding:14px;">
+        <div style="font-size:11px;color:var(--text-muted);font-weight:500;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Total Rx Saved</div>
+        <div style="font-size:24px;font-weight:700;color:var(--blue-900);" id="anaTotalRx">—</div>
+      </div>
+      <div style="background:var(--bg);border-radius:var(--radius-sm);padding:14px;">
+        <div style="font-size:11px;color:var(--text-muted);font-weight:500;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Most Common Type</div>
+        <div style="font-size:16px;font-weight:700;color:var(--blue-900);" id="anaCommonType">—</div>
+      </div>
+      <div style="background:var(--bg);border-radius:var(--radius-sm);padding:14px;">
+        <div style="font-size:11px;color:var(--text-muted);font-weight:500;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Avg Sphere Power</div>
+        <div style="font-size:24px;font-weight:700;color:var(--blue-900);" id="anaAvgSphere">—</div>
+      </div>
+      <div style="background:var(--bg);border-radius:var(--radius-sm);padding:14px;">
+        <div style="font-size:11px;color:var(--text-muted);font-weight:500;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">This Month</div>
+        <div style="font-size:24px;font-weight:700;color:var(--blue-900);" id="anaThisMonth">—</div>
+      </div>
+    </div>
+    <div style="margin-top:14px;" id="anaTypeBreakdown"></div>
+  </div>
+
+  <!-- Brand Preferences Panel -->
+  <div class="panel" id="brandPanel" style="margin-bottom:20px;display:none;">
+    <div class="panel-title">
+      <div class="panel-icon" style="background:var(--amber-50,#FAEEDA);">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#854F0B" stroke-width="1.6" stroke-linecap="round"><path d="M8 1l1.9 3.8 4.2.6-3 3 .7 4.2L8 11l-3.8 1.6.7-4.2-3-3 4.2-.6z"/></svg>
+      </div>
+      Brand Preferences
+      <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:4px;">Preferred brands get +10 score boost</span>
+    </div>
+    <div id="brandPrefsList" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <select id="brandAddSelect" style="height:36px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:13px;background:var(--surface);">
+        <option value="">Add brand...</option>
+        <option>Zeiss</option><option>Hoya</option><option>Essilor</option>
+        <option>Nikon</option><option>Rodenstock</option><option>Shamir</option>
+        <option>Indo</option><option>Seiko</option><option>Tokai</option>
+      </select>
+      <button onclick="addBrandPref()" style="height:36px;padding:0 16px;background:var(--blue-400);color:#fff;border:none;border-radius:var(--radius-sm);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;">Add</button>
+    </div>
+  </div>
+
 <script>
 // Credentials loaded from config.js
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -501,11 +551,127 @@ async function savePersonal() {
     if(em!==(_profileData&&_profileData.email)) await sb.auth.updateUser({email:em});
     _profileData=Object.assign({},_profileData,{first_name:fn,last_name:ln,email:em});
     closeModal('modalPersonal');
-    loadDashboard().catch(function(err) {
+    // ── Phase 4: Analytics ───────────────────────────────────────
+async function loadAnalytics() {
+  if (!_userId) return;
+  try {
+    var r = await sb.from('prescriptions').select('*').eq('profile_id', _userId);
+    if (!r.data || r.data.length === 0) return;
+
+    var data = r.data;
+    document.getElementById('analyticsPanel').style.display = 'block';
+    document.getElementById('anaTotalRx').textContent = data.length;
+
+    // Most common type
+    var typeCounts = {};
+    data.forEach(function(rx) { typeCounts[rx.rx_type] = (typeCounts[rx.rx_type]||0) + 1; });
+    var topType = Object.keys(typeCounts).reduce(function(a,b){ return typeCounts[a]>typeCounts[b]?a:b; });
+    var typeNames = {myopia:'Myopia',hyperopia:'Hyperopia',astigmatism:'Astigmatism',presbyopia:'Presbyopia',compound:'Compound',plano:'Plano'};
+    document.getElementById('anaCommonType').textContent = typeNames[topType] || topType;
+
+    // Avg sphere
+    var sphereVals = data.filter(function(rx){ return rx.od_sphere!==null||rx.os_sphere!==null; })
+      .map(function(rx){ return Math.abs(rx.od_sphere||rx.os_sphere||0); });
+    var avg = sphereVals.length ? (sphereVals.reduce(function(a,b){return a+b;},0)/sphereVals.length).toFixed(2) : '—';
+    document.getElementById('anaAvgSphere').textContent = avg !== '—' ? avg + ' D' : '—';
+
+    // This month
+    var now = new Date();
+    var thisMonth = data.filter(function(rx){
+      var d = new Date(rx.created_at);
+      return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear();
+    }).length;
+    document.getElementById('anaThisMonth').textContent = thisMonth;
+
+    // Type breakdown bar
+    var breakdown = document.getElementById('anaTypeBreakdown');
+    var sorted = Object.keys(typeCounts).sort(function(a,b){ return typeCounts[b]-typeCounts[a]; });
+    var colors = {myopia:'#378ADD',hyperopia:'#1D9E75',astigmatism:'#BA7517',presbyopia:'#7B5EA7',compound:'#E24B4A',plano:'#888780'};
+    breakdown.innerHTML = '<div style="font-size:11px;font-weight:500;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">Rx type breakdown</div>' +
+      sorted.map(function(type) {
+        var pct = Math.round(typeCounts[type]/data.length*100);
+        return '<div style="margin-bottom:6px;">' +
+          '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">' +
+            '<span style="color:var(--text-secondary);">' + (typeNames[type]||type) + '</span>' +
+            '<span style="color:var(--text-muted);">' + typeCounts[type] + ' (' + pct + '%)</span>' +
+          '</div>' +
+          '<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">' +
+            '<div style="height:100%;width:' + pct + '%;background:' + (colors[type]||'#888') + ';border-radius:3px;transition:width .5s;"></div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+  } catch(e) { console.warn('Analytics error:', e.message); }
+}
+
+// ── Phase 4: Brand Preferences ────────────────────────────────
+var _brandPrefs = [];
+
+async function loadBrandPrefs() {
+  if (!_userId) return;
+  try {
+    var r = await sb.from('brand_preferences').select('*').eq('profile_id', _userId);
+    _brandPrefs = r.data || [];
+    renderBrandPrefs();
+    if (_brandPrefs.length > 0 || true) {
+      document.getElementById('brandPanel').style.display = 'block';
+    }
+  } catch(e) { console.warn('Brand prefs error:', e.message); }
+}
+
+function renderBrandPrefs() {
+  var list = document.getElementById('brandPrefsList');
+  if (!list) return;
+  if (_brandPrefs.length === 0) {
+    list.innerHTML = '<span style="font-size:13px;color:var(--text-muted);">No preferred brands yet. Add brands below to boost their scores in Rx matching.</span>';
+    return;
+  }
+  list.innerHTML = '';
+  _brandPrefs.forEach(function(b) {
+    var chip = document.createElement('span');
+    chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:5px 12px;background:var(--blue-50);border:1px solid var(--blue-100);border-radius:20px;font-size:13px;font-weight:500;color:var(--blue-800);';
+        var nameSpan = document.createTextNode(b.brand_name + ' ');
+    var delBtn = document.createElement('span');
+    delBtn.style.cssText = 'cursor:pointer;color:var(--blue-400);font-size:14px;line-height:1;';
+    delBtn.innerHTML = '&times;';
+    (function(bid){ delBtn.onclick = function(){ removeBrandPref(bid); }; })(b.id);
+    chip.appendChild(nameSpan);
+    chip.appendChild(delBtn);
+    list.appendChild(chip);
+  });
+}
+
+async function addBrandPref() {
+  var sel = document.getElementById('brandAddSelect');
+  var brand = sel.value;
+  if (!brand) return;
+  if (_brandPrefs.some(function(b){ return b.brand_name === brand; })) {
+    showToast(brand + ' is already in your preferences.');
+    return;
+  }
+  try {
+    var r = await sb.from('brand_preferences').insert({ profile_id: _userId, brand_name: brand });
+    if (r.error) throw r.error;
+    sel.value = '';
+    await loadBrandPrefs();
+    showToast(brand + ' added to preferred brands.');
+  } catch(e) { showToast('Could not add brand: ' + (e.message||'error')); }
+}
+
+async function removeBrandPref(id) {
+  try {
+    await sb.from('brand_preferences').delete().eq('id', id).eq('profile_id', _userId);
+    await loadBrandPrefs();
+    showToast('Brand removed from preferences.');
+  } catch(e) { showToast('Could not remove brand.'); }
+}
+
+loadDashboard().catch(function(err) {
   console.error('Dashboard load error:', err);
   document.body.style.visibility = 'visible';
 });
 loadDashRxHistory();
+loadAnalytics();
+loadBrandPrefs();
     showToast('Personal info updated.');
   } catch(err){errEl.textContent=err.message||'Save failed.';errEl.classList.add('show');}
   finally{btn.textContent='Save changes';btn.classList.remove('loading');}

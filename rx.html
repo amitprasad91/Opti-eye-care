@@ -6,6 +6,7 @@
 <title>OptiReg — Rx Matching</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="config.js"></script>
 <style>
 :root{
@@ -263,17 +264,17 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 
     <div class="rx-grid">
       <div class="rx-eye-label">OD <span style="font-size:11px;font-weight:400;color:var(--text-muted);">(Right)</span></div>
-      <input class="rx-input" id="od_sph" placeholder="+0.00" oninput="onRxChange()">
-      <input class="rx-input" id="od_cyl" placeholder="-0.00" oninput="onRxChange()">
-      <input class="rx-input" id="od_axis" placeholder="0°" oninput="onRxChange()">
-      <input class="rx-input" id="od_add" placeholder="+0.00" oninput="onRxChange()">
+      <input class="rx-input" id="od_sph" placeholder="+0.00" oninput="onRxInput()">
+      <input class="rx-input" id="od_cyl" placeholder="-0.00" oninput="onRxInput()">
+      <input class="rx-input" id="od_axis" placeholder="0°" oninput="onRxInput()">
+      <input class="rx-input" id="od_add" placeholder="+0.00" oninput="onRxInput()">
     </div>
     <div class="rx-grid">
       <div class="rx-eye-label">OS <span style="font-size:11px;font-weight:400;color:var(--text-muted);">(Left)</span></div>
-      <input class="rx-input" id="os_sph" placeholder="+0.00" oninput="onRxChange()">
-      <input class="rx-input" id="os_cyl" placeholder="-0.00" oninput="onRxChange()">
-      <input class="rx-input" id="os_axis" placeholder="0°" oninput="onRxChange()">
-      <input class="rx-input" id="os_add" placeholder="+0.00" oninput="onRxChange()">
+      <input class="rx-input" id="os_sph" placeholder="+0.00" oninput="onRxInput()">
+      <input class="rx-input" id="os_cyl" placeholder="-0.00" oninput="onRxInput()">
+      <input class="rx-input" id="os_axis" placeholder="0°" oninput="onRxInput()">
+      <input class="rx-input" id="os_add" placeholder="+0.00" oninput="onRxInput()">
     </div>
 
     <div style="margin-top:10px;font-size:12px;color:var(--text-muted);">
@@ -287,6 +288,16 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       </button>
       <button class="btn-secondary" onclick="clearRx()">Clear</button>
       <button class="btn-secondary" onclick="saveRx()">Save Rx</button>
+      <button class="btn-secondary" onclick="saveAsTemplate()" title="Save as template for quick reuse">+ Template</button>
+      <button class="btn-secondary" onclick="toggleTemplatesPanel()" title="Load a saved template" id="templatesToggleBtn">Templates ▾</button>
+    </div>
+    <!-- Templates panel -->
+    <div id="templatesPanel" style="display:none;margin-top:14px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;">
+      <div style="padding:10px 14px;background:var(--gray-100);font-size:12px;font-weight:600;color:var(--text-secondary);display:flex;justify-content:space-between;align-items:center;">
+        Saved templates
+        <span id="templateCount" style="font-weight:400;color:var(--text-muted);"></span>
+      </div>
+      <div id="templatesList" style="max-height:200px;overflow-y:auto;"></div>
     </div>
   </div>
 
@@ -313,9 +324,15 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
           <div class="overlay-title">Matched products <span id="overlayCount" style="font-size:12px;font-weight:400;color:var(--text-muted);"></span></div>
           <div class="overlay-sub">Ranked by compatibility with the entered prescription.</div>
         </div>
-        <button class="btn-close" onclick="closeOverlay()">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 2l10 10M12 2L2 12"/></svg>
-        </button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button onclick="exportPDF()" style="height:32px;padding:0 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-family:inherit;font-size:12px;font-weight:500;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;gap:5px;">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 9v2h9V9M6.5 1v7M4 6l2.5 2.5L9 6"/></svg>
+            Export PDF
+          </button>
+          <button class="btn-close" onclick="closeOverlay()">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 2l10 10M12 2L2 12"/></svg>
+          </button>
+        </div>
       </div>
       <div class="rx-mini" id="rxMiniCard"></div>
     </div>
@@ -399,6 +416,7 @@ sb.auth.getSession().then(function(r) {
   document.body.style.visibility = 'visible';
   loadProducts();
   loadHistory();
+  loadPersonalisation();
 }).catch(function(err) {
   // If Supabase fails (bad key, network, SDK not loaded) — show page anyway
   // so user sees an error rather than a blank white screen
@@ -530,6 +548,9 @@ function scoreProduct(product, rx) {
 
   // ── 7. Stock bonus
   if (product.in_stock) score += 5;
+
+  // Personalisation boost (brand preference + practice context)
+  score += getPersonalisationBoost(product);
 
   return Math.min(100, Math.max(0, score));
 }
@@ -894,6 +915,312 @@ function loadHistoryRxAndMatch(rx) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// PHASE 4 — Auto-trigger, Personalisation, Templates, PDF Export
+// ════════════════════════════════════════════════════════════
+
+// ── Feature 1: Auto-trigger with 800ms debounce ──────────────
+var _autoTriggerTimer = null;
+var _autoTriggerEnabled = true;
+
+function onRxInput() {
+  onRxChange(); // Update badge immediately
+  if (!_autoTriggerEnabled) return;
+  clearTimeout(_autoTriggerTimer);
+  var rx = getRxValues();
+  if (!rx) return; // Don't trigger if no values
+  _autoTriggerTimer = setTimeout(function() {
+    // Only auto-trigger if at least one sphere value is present
+    if (rx.od_sphere !== null || rx.os_sphere !== null) {
+      runMatching();
+    }
+  }, 800);
+}
+
+// ── Feature 2: Personalised scoring boost ────────────────────
+var _brandPrefs   = [];    // loaded from DB
+var _practiceType = null;  // loaded from profiles
+
+async function loadPersonalisation() {
+  if (!_userId) return;
+  try {
+    // Load brand preferences
+    var bp = await sb.from('brand_preferences').select('brand_name').eq('profile_id', _userId);
+    if (bp.data) _brandPrefs = bp.data.map(function(r){ return r.brand_name; });
+
+    // Load practice type for context scoring
+    var pi = await sb.from('practice_info').select('practice_type').eq('profile_id', _userId).maybeSingle();
+    if (pi.data) _practiceType = pi.data.practice_type;
+  } catch(e) { console.warn('Personalisation load failed:', e.message); }
+}
+
+function getPersonalisationBoost(product) {
+  var boost = 0;
+  // Brand preference boost
+  if (_brandPrefs.indexOf(product.brand) !== -1) boost += 10;
+  // Practice context boost
+  if (_practiceType === 'optical' && product.tier === 'basic')    boost += 5;
+  if (_practiceType === 'hospital' && product.tier === 'premium') boost += 5;
+  if (_practiceType === 'clinic' && product.tier === 'mid')       boost += 5;
+  if (_practiceType === 'academic')                                boost += 0; // neutral
+  return boost;
+}
+
+// ── Feature 3: Rx Templates ───────────────────────────────────
+var _templates = [];
+
+async function loadTemplates() {
+  if (!_userId) return;
+  try {
+    var r = await sb.from('rx_templates').select('*')
+      .eq('profile_id', _userId)
+      .order('created_at', { ascending: false });
+    _templates = r.data || [];
+    renderTemplatesList();
+  } catch(e) { console.warn('Templates load failed:', e.message); }
+}
+
+function renderTemplatesList() {
+  var list = document.getElementById('templatesList');
+  var count = document.getElementById('templateCount');
+  if (!list) return;
+  if (count) count.textContent = _templates.length + ' saved';
+
+  if (_templates.length === 0) {
+    list.innerHTML = '<div style="padding:12px 14px;font-size:12px;color:var(--text-muted);">No templates yet. Fill an Rx and click "+ Template" to save.</div>';
+    return;
+  }
+
+  var fmtV = function(v){ return v !== null && v !== undefined ? (v > 0 ? '+' + v : '' + v) : '—'; };
+
+  list.innerHTML = '';
+  _templates.forEach(function(t, i) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--border);gap:8px;cursor:pointer;';
+    row.onmouseenter = function(){ row.style.background='var(--blue-50)'; };
+    row.onmouseleave = function(){ row.style.background=''; };
+
+    var info = document.createElement('div');
+    info.onclick = function(){ loadTemplate(i); };
+    info.style.flex = '1';
+
+    var name = document.createElement('div');
+    name.style.cssText = 'font-size:13px;font-weight:500;color:var(--text-primary);';
+    name.textContent = t.template_name;
+
+    var rxStr = document.createElement('div');
+    rxStr.style.cssText = 'font-size:11px;font-family:monospace;color:var(--text-muted);margin-top:2px;';
+    rxStr.textContent = 'OD ' + fmtV(t.od_sphere) + '/' + fmtV(t.od_cylinder) + '  OS ' + fmtV(t.os_sphere) + '/' + fmtV(t.os_cylinder);
+
+    info.appendChild(name);
+    info.appendChild(rxStr);
+
+    var delBtn = document.createElement('button');
+    delBtn.textContent = '×';
+    delBtn.title = 'Delete template';
+    delBtn.style.cssText = 'border:none;background:none;color:var(--text-muted);font-size:16px;cursor:pointer;padding:0 4px;flex-shrink:0;';
+    delBtn.onclick = function(e){ e.stopPropagation(); deleteTemplate(t.id, i); };
+
+    row.appendChild(info);
+    row.appendChild(delBtn);
+    list.appendChild(row);
+  });
+}
+
+function toggleTemplatesPanel() {
+  var panel = document.getElementById('templatesPanel');
+  var btn   = document.getElementById('templatesToggleBtn');
+  if (!panel) return;
+  var isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  if (btn) btn.textContent = isOpen ? 'Templates ▾' : 'Templates ▴';
+  if (!isOpen) loadTemplates();
+}
+
+function loadTemplate(idx) {
+  var t = _templates[idx];
+  if (!t) return;
+  document.getElementById('od_sph').value  = t.od_sphere  !== null ? t.od_sphere  : '';
+  document.getElementById('od_cyl').value  = t.od_cylinder!== null ? t.od_cylinder: '';
+  document.getElementById('od_axis').value = t.od_axis    !== null ? t.od_axis    : '';
+  document.getElementById('od_add').value  = t.od_add     !== null ? t.od_add     : '';
+  document.getElementById('os_sph').value  = t.os_sphere  !== null ? t.os_sphere  : '';
+  document.getElementById('os_cyl').value  = t.os_cylinder!== null ? t.os_cylinder: '';
+  document.getElementById('os_axis').value = t.os_axis    !== null ? t.os_axis    : '';
+  document.getElementById('os_add').value  = t.os_add     !== null ? t.os_add     : '';
+  onRxChange();
+  document.getElementById('templatesPanel').style.display = 'none';
+  document.getElementById('templatesToggleBtn').textContent = 'Templates ▾';
+  window.scrollTo(0, 0);
+}
+
+async function saveAsTemplate() {
+  var rx = getRxValues();
+  if (!rx || (rx.od_sphere === null && rx.os_sphere === null)) {
+    showErr('Enter at least one Rx value before saving as a template.');
+    return;
+  }
+  var name = prompt('Template name (e.g. "Standard myopia -2.00"):');
+  if (!name || !name.trim()) return;
+  name = name.trim();
+
+  try {
+    var type = detectRxType(rx);
+    var r = await sb.from('rx_templates').insert({
+      profile_id:    _userId,
+      template_name: name,
+      od_sphere:     rx.od_sphere,  od_cylinder: rx.od_cylinder, od_axis: rx.od_axis, od_add: rx.od_add,
+      os_sphere:     rx.os_sphere,  os_cylinder: rx.os_cylinder, os_axis: rx.os_axis, os_add: rx.os_add,
+      rx_type:       type,
+    });
+    if (r.error) {
+      if (r.error.code === '23505') showErr('A template named "' + name + '" already exists. Use a different name.');
+      else throw r.error;
+    } else {
+      clearErr();
+      await loadTemplates();
+      // Show templates panel so user sees it was saved
+      document.getElementById('templatesPanel').style.display = 'block';
+      document.getElementById('templatesToggleBtn').textContent = 'Templates ▴';
+    }
+  } catch(e) { showErr('Could not save template: ' + (e.message || 'Unknown error')); }
+}
+
+async function deleteTemplate(id, idx) {
+  if (!confirm('Delete this template?')) return;
+  try {
+    await sb.from('rx_templates').delete().eq('id', id).eq('profile_id', _userId);
+    _templates.splice(idx, 1);
+    renderTemplatesList();
+  } catch(e) { showErr('Could not delete template.'); }
+}
+
+// ── Feature 4: PDF Export ─────────────────────────────────────
+async function exportPDF() {
+  if (!_currentRx || _filtered.length === 0) {
+    showErr('Run a match first before exporting.');
+    return;
+  }
+
+  // Get jsPDF
+  var jsPDF = window.jspdf && window.jspdf.jsPDF;
+  if (!jsPDF) { showErr('PDF library not loaded. Please refresh and try again.'); return; }
+
+  var doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  var W = 210, margin = 20, y = margin;
+
+  // Helper functions
+  var blue  = [55, 138, 221];
+  var dark  = [4, 44, 83];
+  var grey  = [95, 94, 90];
+  var light = [226, 228, 233];
+
+  var line = function(y2) { doc.setDrawColor.apply(doc, light); doc.line(margin, y2, W - margin, y2); };
+  var fmtV = function(v){ return v !== null && v !== undefined ? (v > 0 ? '+' + parseFloat(v).toFixed(2) : parseFloat(v).toFixed(2)) : '—'; };
+
+  // Header
+  doc.setFillColor.apply(doc, dark);
+  doc.rect(0, 0, W, 30, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(18); doc.setFont('helvetica','bold');
+  doc.text('OptiReg', margin, 14);
+  doc.setFontSize(9); doc.setFont('helvetica','normal');
+  doc.text('Rx Product Matching Report', margin, 22);
+  doc.text(new Date().toLocaleDateString('en-IN', {day:'numeric',month:'long',year:'numeric'}), W - margin, 22, { align:'right' });
+
+  y = 40;
+
+  // Patient info (if provided)
+  var patName = document.getElementById('patientName') ? document.getElementById('patientName').value.trim() : '';
+  var patAge  = document.getElementById('patientAge')  ? document.getElementById('patientAge').value.trim()  : '';
+  if (patName || patAge) {
+    doc.setTextColor.apply(doc, grey);
+    doc.setFontSize(8); doc.setFont('helvetica','normal');
+    doc.text('PATIENT', margin, y);
+    doc.setTextColor(26, 26, 26);
+    doc.setFontSize(11); doc.setFont('helvetica','bold');
+    doc.text((patName || 'Unnamed') + (patAge ? ', Age ' + patAge : ''), margin, y + 5);
+    y += 15;
+  }
+
+  // Rx values table
+  doc.setFillColor(230, 241, 251);
+  doc.rect(margin, y, W - 2*margin, 8, 'F');
+  doc.setTextColor.apply(doc, dark);
+  doc.setFontSize(9); doc.setFont('helvetica','bold');
+  doc.text('PRESCRIPTION', margin + 3, y + 5.5);
+
+  var rxType = TYPE_LABELS[_currentRx.rx_type] || '';
+  doc.text(rxType, W - margin - 3, y + 5.5, { align:'right' });
+  y += 12;
+
+  // Rx grid
+  var cols = ['', 'Sphere', 'Cylinder', 'Axis', 'Add'];
+  var colW  = (W - 2*margin) / 5;
+  doc.setFontSize(8); doc.setFont('helvetica','bold');
+  doc.setTextColor.apply(doc, grey);
+  cols.forEach(function(col, ci) { doc.text(col, margin + ci * colW + 2, y); });
+  y += 5;
+  line(y); y += 3;
+
+  var rows = [
+    ['OD (Right)', fmtV(_currentRx.od_sphere), fmtV(_currentRx.od_cylinder), _currentRx.od_axis||'—', fmtV(_currentRx.od_add)],
+    ['OS (Left)',  fmtV(_currentRx.os_sphere), fmtV(_currentRx.os_cylinder), _currentRx.os_axis||'—', fmtV(_currentRx.os_add)],
+  ];
+  doc.setFont('helvetica','normal'); doc.setTextColor(26, 26, 26); doc.setFontSize(9);
+  rows.forEach(function(row) {
+    row.forEach(function(cell, ci) { doc.text('' + cell, margin + ci * colW + 2, y); });
+    y += 7;
+  });
+  y += 5;
+
+  // Top 5 matched products
+  var top5 = _filtered.slice(0, 5);
+  doc.setFillColor.apply(doc, dark);
+  doc.rect(margin, y, W - 2*margin, 8, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(9); doc.setFont('helvetica','bold');
+  doc.text('TOP MATCHED PRODUCTS (' + _filtered.length + ' total matched)', margin + 3, y + 5.5);
+  y += 12;
+
+  top5.forEach(function(p, i) {
+    if (y > 260) { doc.addPage(); y = margin; }
+
+    // Score badge
+    var scoreColor = p.score >= 70 ? [29,158,117] : p.score >= 40 ? [186,117,23] : [226,75,74];
+    doc.setFillColor.apply(doc, scoreColor);
+    doc.roundedRect(W - margin - 18, y - 1, 18, 8, 2, 2, 'F');
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(8); doc.setFont('helvetica','bold');
+    doc.text(p.score + '/100', W - margin - 9, y + 4, { align:'center' });
+
+    // Product name
+    doc.setTextColor(26,26,26);
+    doc.setFontSize(10); doc.setFont('helvetica','bold');
+    doc.text((i+1) + '. ' + p.name, margin, y + 4);
+    y += 8;
+
+    // Details row
+    doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor.apply(doc, grey);
+    var details = p.brand + '  |  Index ' + p.lens_index + '  |  ' +
+      ({sv:'Single vision',bifocal:'Bifocal',progressive:'Progressive'}[p.lens_type]||p.lens_type) +
+      '  |  ' + ({ar:'AR coating',uv:'UV',blue:'Blue-cut',photochromic:'Photochromic'}[p.coating]||p.coating) +
+      '  |  ₹' + p.price_min.toLocaleString('en-IN') + '–₹' + p.price_max.toLocaleString('en-IN');
+    doc.text(details, margin, y);
+    y += 5;
+    line(y); y += 5;
+  });
+
+  // Footer
+  doc.setFontSize(7); doc.setTextColor.apply(doc, grey);
+  doc.text('Generated by OptiReg — amitprasad91.github.io/Opti-eye-care', margin, 290);
+  doc.text('Page 1', W - margin, 290, { align:'right' });
+
+  // Save
+  var fname = 'OptiReg_Rx_' + (patName.replace(/\s+/g,'_') || 'Report') + '_' + new Date().toISOString().slice(0,10) + '.pdf';
+  doc.save(fname);
+}
+
 async function signOutRx() {
   await sb.auth.signOut();
   window.location.replace('/Opti-eye-care/login.html');
