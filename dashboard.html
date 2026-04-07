@@ -170,8 +170,8 @@
           <span class="detail-label">Email</span>
           <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <span class="detail-value" id="dEmail" style="word-break:break-all;">—</span>
-            <span id="emailVerifiedBadge" style="display:inline;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#F1EFE8;color:#888780;">Checking...</span>
-            <button id="emailResendBtn" onclick="resendVerificationEmail()" style="display:none;font-size:11px;font-weight:500;color:#A32D2D;background:none;border:1px solid #F09595;border-radius:6px;padding:2px 8px;cursor:pointer;font-family:inherit;">Verify now</button>
+            <span id="emailVerifiedBadge" style="display:none;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;"></span>
+            <button id="emailResendBtn" onclick="resendVerificationEmail()" title="Send verification email to your inbox" style="display:none;font-size:11px;font-weight:500;color:#A32D2D;background:none;border:1px solid #F09595;border-radius:6px;padding:2px 8px;cursor:pointer;font-family:inherit;">Verify now →</button>
           </span>
         </div>
       <div class="detail-row"><span class="detail-label">Mobile</span><span class="detail-value" id="dMobile">—</span></div>
@@ -596,20 +596,23 @@ async function savePractice() {
 
 // ── Email verification badge ─────────────────────────────────
 function updateEmailBadge(email, isConfirmed) {
-  var badge    = document.getElementById('emailVerifiedBadge');
+  var badge     = document.getElementById('emailVerifiedBadge');
   var resendBtn = document.getElementById('emailResendBtn');
-  if (!badge || !email) return;
+  if (!badge) return;
 
   badge.style.display = 'inline';
+
   if (isConfirmed) {
     badge.textContent = '✓ Verified';
     badge.style.background = '#EAF3DE';
     badge.style.color = '#27500A';
+    badge.title = 'Email confirmed';
     if (resendBtn) resendBtn.style.display = 'none';
   } else {
     badge.textContent = '✗ Not verified';
     badge.style.background = '#FCEBEB';
     badge.style.color = '#A32D2D';
+    badge.title = 'Click Verify now to send a confirmation email';
     if (resendBtn) resendBtn.style.display = 'inline';
   }
 }
