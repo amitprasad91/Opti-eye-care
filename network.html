@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OptiReg — Peer Network</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<style>
+:root{
+  --blue-50:#E6F1FB;--blue-100:#B5D4F4;--blue-400:#378ADD;--blue-600:#185FA5;--blue-900:#042C53;
+  --teal-50:#EAF3DE;--teal-400:#1D9E75;
+  --surface:#FFFFFF;--bg:#F5F7FA;
+  --text-primary:#1A1A1A;--text-secondary:#5F5E5A;--text-muted:#888780;
+  --border:#E2E4E9;--radius-sm:8px;--radius-md:12px;--radius-lg:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:"DM Sans",system-ui,sans-serif;background:var(--bg);color:var(--text-primary);min-height:100vh;visibility:hidden;}
+.topnav{background:var(--blue-900);padding:0 32px;height:60px;display:flex;align-items:center;justify-content:space-between;}
+.nav-logo{display:flex;align-items:center;gap:10px;}
+.nav-mark{width:32px;height:32px;border-radius:8px;background:var(--blue-400);display:flex;align-items:center;justify-content:center;}
+.nav-name{font-size:16px;font-weight:600;color:#fff;}
+.nav-right{display:flex;align-items:center;gap:16px;}
+.nav-link{font-size:13px;color:rgba(255,255,255,0.7);text-decoration:none;}
+.nav-link:hover{color:#fff;}
+.btn-signout{font-size:12px;padding:6px 14px;border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,0.2);background:transparent;color:rgba(255,255,255,0.7);cursor:pointer;font-family:inherit;}
+.btn-signout:hover{background:rgba(255,255,255,0.08);color:#fff;}
+.page{max-width:960px;margin:0 auto;padding:32px 24px;}
+.page-header{margin-bottom:24px;}
+.page-title{font-size:22px;font-weight:600;}
+.page-sub{font-size:14px;color:var(--text-secondary);margin-top:3px;}
+
+/* Layout */
+.layout{display:grid;grid-template-columns:260px 1fr;gap:20px;align-items:start;}
+
+/* Filter sidebar */
+.filter-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;position:sticky;top:20px;}
+.filter-title{font-size:13px;font-weight:600;margin-bottom:16px;}
+.filter-group{margin-bottom:14px;}
+.filter-label{font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px;}
+select,input[type=text]{width:100%;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:13px;background:var(--surface);color:var(--text-primary);outline:none;}
+select:focus,input:focus{border-color:var(--blue-400);}
+.result-count{font-size:12px;color:var(--text-muted);margin-top:10px;}
+
+/* Professional card */
+.prof-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:10px;display:flex;align-items:flex-start;gap:14px;transition:border-color .15s;}
+.prof-card:hover{border-color:var(--blue-100);}
+.prof-avatar{width:46px;height:46px;border-radius:50%;background:var(--blue-400);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#fff;flex-shrink:0;}
+.prof-body{flex:1;}
+.prof-name{font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:2px;}
+.prof-role{font-size:13px;color:var(--text-secondary);}
+.prof-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.tag{font-size:11px;font-weight:500;padding:3px 9px;border-radius:10px;background:var(--bg);border:1px solid var(--border);color:var(--text-secondary);}
+.tag-loc{background:var(--blue-50);border-color:var(--blue-100);color:var(--blue-600);}
+.tag-spec{background:var(--teal-50);border-color:#97C459;color:#27500A;}
+
+/* Empty / loader */
+.empty-state{text-align:center;padding:56px 20px;}
+.empty-icon{font-size:40px;margin-bottom:14px;}
+.empty-title{font-size:16px;font-weight:500;margin-bottom:6px;}
+.empty-sub{font-size:13px;color:var(--text-secondary);}
+.loader{text-align:center;padding:40px;color:var(--text-muted);font-size:13px;}
+
+.ok-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1D9E75;color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:500;display:none;z-index:300;}
+.ok-toast.show{display:block;}
+
+@media(max-width:700px){
+  .topnav{padding:0 16px;}
+  .page{padding:16px;}
+  .layout{grid-template-columns:1fr;}
+  .filter-card{position:static;}
+}
+</style>
+</head>
+<body>
+<nav class="topnav">
+  <div class="nav-logo">
+    <div class="nav-mark">
+      <svg viewBox="0 0 22 22" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" width="17" height="17">
+        <circle cx="11" cy="11" r="4"/>
+        <path d="M2 11h2M18 11h2M11 2v2M11 18v2"/>
+        <path d="M4.9 4.9l1.4 1.4M15.7 15.7l1.4 1.4M4.9 17.1l1.4-1.4M15.7 6.3l1.4-1.4"/>
+      </svg>
+    </div>
+    <span class="nav-name">OptiReg</span>
+  </div>
+  <div class="nav-right">
+    <a href="/Opti-eye-care/dashboard.html" class="nav-link">Dashboard</a>
+    <a href="/Opti-eye-care/rx.html" class="nav-link">Rx Matching</a>
+    <button class="btn-signout" onclick="networkSignOut()">Sign out</button>
+  </div>
+</nav>
+
+<div class="page">
+  <div class="page-header">
+    <div class="page-title">Peer Network</div>
+    <div class="page-sub">Browse registered eye-care professionals. Search by specialisation, state or name.</div>
+  </div>
+
+  <div class="layout">
+    <!-- Filters -->
+    <div class="filter-card">
+      <div class="filter-title">Filter professionals</div>
+
+      <div class="filter-group">
+        <span class="filter-label">Search</span>
+        <input type="text" id="filterSearch" placeholder="Name or city..." oninput="applyFilters()">
+      </div>
+
+      <div class="filter-group">
+        <span class="filter-label">Specialisation</span>
+        <select id="filterSpec" onchange="applyFilters()">
+          <option value="">All specialisations</option>
+          <option value="optom">Optometrist</option>
+          <option value="ophtha">Ophthalmologist</option>
+          <option value="optom-ophtha">Optometrist / Ophthalmologist</option>
+          <option value="optician">Optician / Distributor</option>
+          <option value="acad">Academician / Industry</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <span class="filter-label">State</span>
+        <select id="filterState" onchange="applyFilters()">
+          <option value="">All states</option>
+          <option>Andhra Pradesh</option><option>Assam</option><option>Bihar</option>
+          <option>Delhi</option><option>Goa</option><option>Gujarat</option>
+          <option>Haryana</option><option>Karnataka</option><option>Kerala</option>
+          <option>Madhya Pradesh</option><option>Maharashtra</option><option>Odisha</option>
+          <option>Punjab</option><option>Rajasthan</option><option>Tamil Nadu</option>
+          <option>Telangana</option><option>Uttar Pradesh</option><option>West Bengal</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <span class="filter-label">Role</span>
+        <select id="filterRole" onchange="applyFilters()">
+          <option value="">All roles</option>
+          <option value="professional">Working professional</option>
+          <option value="student">Student</option>
+        </select>
+      </div>
+
+      <div class="result-count" id="resultCount"></div>
+    </div>
+
+    <!-- Directory listing -->
+    <div id="directoryList">
+      <div class="loader">Loading professionals...</div>
+    </div>
+  </div>
+</div>
+
+<div class="ok-toast" id="okToast"></div>
+
+<script>
+var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+var _userId  = null;
+var _allProfs = [];
+
+var SPEC_LABELS = {
+  optom:'Optometrist', ophtha:'Ophthalmologist',
+  'optom-ophtha':'Optometrist / Ophthalmologist',
+  optician:'Optician / Distributor', acad:'Academician / Industry', other:'Other'
+};
+var PTYPE_LABELS = {
+  hospital:'Hospital', clinic:'Private clinic', optical:'Optical store',
+  academic:'Academic institution', other:'Other'
+};
+
+// ── Auth ──────────────────────────────────────────────────────
+sb.auth.getSession().then(async function(r) {
+  if (!r.data || !r.data.session) {
+    window.location.replace('/Opti-eye-care/login.html'); return;
+  }
+  _userId = r.data.session.user.id;
+  document.body.style.visibility = 'visible';
+  loadDirectory();
+}).catch(function() {
+  document.body.style.visibility = 'visible';
+  window.location.replace('/Opti-eye-care/login.html');
+});
+
+// ── Load all professionals ────────────────────────────────────
+async function loadDirectory() {
+  var list = document.getElementById('directoryList');
+  try {
+    // Load professional_details + profiles + practice_info in parallel
+    var [profs, profiles, practices] = await Promise.all([
+      sb.from('professional_details').select('profile_id,role_type,specialisation,qualification,experience_years'),
+      sb.from('profiles').select('id,first_name,last_name,created_at'),
+      sb.from('practice_info').select('profile_id,city,state,practice_type,organisation_name'),
+    ]);
+
+    var pdMap = {}, piMap = {}, nameMap = {};
+    (profs.data||[]).forEach(function(r){ pdMap[r.profile_id] = r; });
+    (practices.data||[]).forEach(function(r){ piMap[r.profile_id] = r; });
+    (profiles.data||[]).forEach(function(r){ nameMap[r.id] = r; });
+
+    // Build combined list — exclude self
+    _allProfs = (profiles.data||[])
+      .filter(function(p){ return p.id !== _userId; })
+      .map(function(p){
+        return {
+          id:            p.id,
+          first_name:    p.first_name || '',
+          last_name:     p.last_name  || '',
+          created_at:    p.created_at,
+          role_type:     pdMap[p.id] ? pdMap[p.id].role_type      : null,
+          specialisation:pdMap[p.id] ? pdMap[p.id].specialisation  : null,
+          qualification: pdMap[p.id] ? pdMap[p.id].qualification    : null,
+          experience_years: pdMap[p.id] ? pdMap[p.id].experience_years : null,
+          city:          piMap[p.id] ? piMap[p.id].city            : null,
+          state:         piMap[p.id] ? piMap[p.id].state           : null,
+          practice_type: piMap[p.id] ? piMap[p.id].practice_type   : null,
+          organisation:  piMap[p.id] ? piMap[p.id].organisation_name: null,
+        };
+      });
+
+    applyFilters();
+  } catch(e) {
+    list.innerHTML = '<div class="loader">Could not load directory. Please refresh.</div>';
+    console.error(e);
+  }
+}
+
+// ── Filter and render ─────────────────────────────────────────
+function applyFilters() {
+  var search = document.getElementById('filterSearch').value.toLowerCase().trim();
+  var spec   = document.getElementById('filterSpec').value;
+  var state  = document.getElementById('filterState').value;
+  var role   = document.getElementById('filterRole').value;
+
+  var filtered = _allProfs.filter(function(p) {
+    var name = (p.first_name + ' ' + p.last_name).toLowerCase();
+    var city = (p.city || '').toLowerCase();
+    var matchSearch = !search || name.includes(search) || city.includes(search);
+    var matchSpec   = !spec   || p.specialisation === spec;
+    var matchState  = !state  || p.state === state;
+    var matchRole   = !role   || p.role_type === role;
+    return matchSearch && matchSpec && matchState && matchRole;
+  });
+
+  document.getElementById('resultCount').textContent =
+    filtered.length + ' professional' + (filtered.length !== 1 ? 's' : '') + ' found';
+
+  renderDirectory(filtered);
+}
+
+function renderDirectory(list) {
+  var el = document.getElementById('directoryList');
+
+  if (list.length === 0) {
+    el.innerHTML =
+      '<div class="empty-state">' +
+        '<div class="empty-icon">🔍</div>' +
+        '<div class="empty-title">No professionals found</div>' +
+        '<div class="empty-sub">Try adjusting your filters or search term.</div>' +
+      '</div>';
+    return;
+  }
+
+  var QUAL = {boptom:'B.Optom', moptom:'M.Optom', do:'D.O', phd:'PhD / MS'};
+
+  el.innerHTML = '';
+  list.forEach(function(p) {
+    var initials = [(p.first_name||'?')[0], (p.last_name||'?')[0]].join('').toUpperCase();
+    var name     = (p.first_name + ' ' + p.last_name).trim() || 'Unknown';
+    var role     = p.role_type === 'student' ? 'Student' : 'Working professional';
+    var specLabel= SPEC_LABELS[p.specialisation] || p.specialisation || '';
+    var qualLabel= QUAL[p.qualification] || '';
+    var expText  = p.experience_years ? p.experience_years + ' yr exp' : '';
+    var location = [p.city, p.state].filter(Boolean).join(', ');
+    var orgText  = p.organisation || '';
+    var ptypeText= PTYPE_LABELS[p.practice_type] || '';
+
+    var card = document.createElement('div');
+    card.className = 'prof-card';
+
+    // Avatar
+    var avatar = document.createElement('div');
+    avatar.className = 'prof-avatar';
+    avatar.textContent = initials;
+
+    // Body
+    var body = document.createElement('div');
+    body.className = 'prof-body';
+
+    var nameEl = document.createElement('div');
+    nameEl.className = 'prof-name';
+    nameEl.textContent = 'Dr. ' + name;
+
+    var roleEl = document.createElement('div');
+    roleEl.className = 'prof-role';
+    roleEl.textContent = [specLabel, qualLabel, expText].filter(Boolean).join(' · ') || role;
+
+    var tags = document.createElement('div');
+    tags.className = 'prof-tags';
+
+    if (location) {
+      var locTag = document.createElement('span');
+      locTag.className = 'tag tag-loc';
+      locTag.textContent = '📍 ' + location;
+      tags.appendChild(locTag);
+    }
+    if (specLabel) {
+      var specTag = document.createElement('span');
+      specTag.className = 'tag tag-spec';
+      specTag.textContent = specLabel;
+      tags.appendChild(specTag);
+    }
+    if (ptypeText) {
+      var ptTag = document.createElement('span');
+      ptTag.className = 'tag';
+      ptTag.textContent = ptypeText;
+      tags.appendChild(ptTag);
+    }
+    if (orgText) {
+      var orgTag = document.createElement('span');
+      orgTag.className = 'tag';
+      orgTag.textContent = orgText;
+      tags.appendChild(orgTag);
+    }
+
+    body.appendChild(nameEl);
+    body.appendChild(roleEl);
+    if (tags.children.length > 0) body.appendChild(tags);
+    card.appendChild(avatar);
+    card.appendChild(body);
+    el.appendChild(card);
+  });
+}
+
+function showToast(msg) {
+  var t = document.getElementById('okToast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(function(){ t.classList.remove('show'); }, 3000);
+}
+
+async function networkSignOut() {
+  await sb.auth.signOut();
+  window.location.replace('/Opti-eye-care/login.html');
+}
+</script>
+</body>
+</html>

@@ -288,6 +288,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       </button>
       <button class="btn-secondary" onclick="clearRx()">Clear</button>
       <button class="btn-secondary" onclick="saveRx()">Save Rx</button>
+      <button class="btn-secondary" onclick="openScanRx()" title="Scan a prescription photo with AI">📷 Scan Rx</button>
       <button class="btn-secondary" onclick="saveAsTemplate()" title="Save as template for quick reuse">+ Template</button>
       <button class="btn-secondary" onclick="toggleTemplatesPanel()" title="Load a saved template" id="templatesToggleBtn">Templates ▾</button>
     </div>
@@ -312,6 +313,31 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 </div>
 
 <!-- ── RESULTS OVERLAY ─────────────────────────────────────── -->
+<!-- Scan Rx Overlay -->
+<div id="scanOverlay" style="display:none;position:fixed;inset:0;z-index:400;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--surface);border-radius:var(--radius-lg);padding:28px;width:100%;max-width:480px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div style="font-size:16px;font-weight:600;">📷 Scan Prescription</div>
+      <button onclick="closeScanRx()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+    </div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5;">
+      Take a photo of a handwritten or printed prescription. AI will extract the Rx values automatically.
+    </div>
+    <div id="scanDropzone" onclick="document.getElementById('scanFileInput').click()" style="border:2px dashed var(--border);border-radius:var(--radius-md);padding:32px;text-align:center;cursor:pointer;transition:border-color .15s;margin-bottom:14px;">
+      <div style="font-size:32px;margin-bottom:8px;">📄</div>
+      <div style="font-size:14px;font-weight:500;color:var(--text-primary);">Click to upload photo</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">JPG, PNG — max 5MB</div>
+    </div>
+    <input type="file" id="scanFileInput" accept="image/*" style="display:none;" onchange="processScanFile(this)">
+    <div id="scanPreview" style="display:none;margin-bottom:14px;">
+      <img id="scanPreviewImg" style="width:100%;max-height:200px;object-fit:contain;border-radius:var(--radius-sm);border:1px solid var(--border);">
+    </div>
+    <div id="scanStatus" style="font-size:13px;color:var(--text-muted);text-align:center;margin-bottom:12px;min-height:18px;"></div>
+    <div id="scanErr" style="background:var(--red-50,#FCEBEB);color:#A32D2D;border:1px solid #F09595;border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;margin-bottom:12px;display:none;"></div>
+    <button id="scanBtn" onclick="runOcrScan()" style="width:100%;height:42px;background:var(--blue-400);color:#fff;border:none;border-radius:var(--radius-sm);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer;display:none;">Scan with AI</button>
+  </div>
+</div>
+
 <div class="overlay" id="overlay" onclick="handleOverlayClick(event)">
   <div class="overlay-panel" id="overlayPanel">
 
@@ -417,6 +443,8 @@ sb.auth.getSession().then(function(r) {
   loadProducts();
   loadHistory();
   loadPersonalisation();
+  loadMlWeights();
+  setupRealtimeStock();
 }).catch(function(err) {
   // If Supabase fails (bad key, network, SDK not loaded) — show page anyway
   // so user sees an error rather than a blank white screen
@@ -551,6 +579,9 @@ function scoreProduct(product, rx) {
 
   // Personalisation boost (brand preference + practice context)
   score += getPersonalisationBoost(product);
+
+  // ML boost (based on past interaction history)
+  score += getMlBoost(product);
 
   return Math.min(100, Math.max(0, score));
 }
@@ -689,6 +720,9 @@ function setFilter(f, el) {
 
 // ── Compare ──────────────────────────────────────────────────
 function toggleCompare(id) {
+  // Track interaction for ML
+  var isAdding = !_compareSet.some(function(c){ return c.id === id; });
+  if (isAdding) trackInteraction(id, 'compared');
   var product = _products.find(function(p){ return p.id === id; });
   if (!product) return;
   var idx = _compareSet.findIndex(function(p){ return p.id === id; });
@@ -1219,6 +1253,186 @@ async function exportPDF() {
   // Save
   var fname = 'OptiReg_Rx_' + (patName.replace(/\s+/g,'_') || 'Report') + '_' + new Date().toISOString().slice(0,10) + '.pdf';
   doc.save(fname);
+}
+
+// ── Feature 5: AI Rx OCR Scan ────────────────────────────────
+var _scanImageBase64 = null;
+var _scanImageType   = null;
+
+function openScanRx() {
+  document.getElementById('scanOverlay').style.display = 'flex';
+  _scanImageBase64 = null;
+  document.getElementById('scanPreview').style.display = 'none';
+  document.getElementById('scanStatus').textContent = '';
+  document.getElementById('scanBtn').style.display = 'none';
+  document.getElementById('scanErr').style.display = 'none';
+}
+function closeScanRx() {
+  document.getElementById('scanOverlay').style.display = 'none';
+  document.getElementById('scanFileInput').value = '';
+}
+
+function processScanFile(input) {
+  var file = input.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    document.getElementById('scanErr').textContent = 'File too large. Maximum 5MB.';
+    document.getElementById('scanErr').style.display = 'block';
+    return;
+  }
+  document.getElementById('scanErr').style.display = 'none';
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var dataUrl = e.target.result;
+    _scanImageType   = file.type;
+    _scanImageBase64 = dataUrl.split(',')[1];
+    var img = document.getElementById('scanPreviewImg');
+    img.src = dataUrl;
+    document.getElementById('scanPreview').style.display = 'block';
+    document.getElementById('scanBtn').style.display = 'block';
+    document.getElementById('scanStatus').textContent = 'Image ready. Click "Scan with AI" to extract Rx values.';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function runOcrScan() {
+  if (!_scanImageBase64) return;
+  var btn = document.getElementById('scanBtn');
+  var status = document.getElementById('scanStatus');
+  var errEl  = document.getElementById('scanErr');
+  btn.textContent = 'Scanning...'; btn.disabled = true;
+  status.textContent = 'AI is reading the prescription...';
+  errEl.style.display = 'none';
+
+  try {
+    var response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01', 'x-api-key': window.ANTHROPIC_API_KEY || '' },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 500,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: _scanImageType, data: _scanImageBase64 }
+            },
+            {
+              type: 'text',
+              text: 'This is a prescription from an eye doctor. Extract ONLY the optical values. Return a JSON object with these exact keys (use null for missing values): od_sphere, od_cylinder, od_axis, od_add, os_sphere, os_cylinder, os_axis, os_add. All values should be numbers or null. Sphere and cylinder as decimal (e.g. -2.50), axis as integer (0-180), add as decimal. Return ONLY the JSON, no explanation.'
+            }
+          ]
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      var errData = await response.json();
+      if (response.status === 401 || (errData.error && errData.error.type === 'authentication_error')) {
+        throw new Error('API key missing or invalid. Add your Anthropic API key to config.js as: var ANTHROPIC_API_KEY = "your-key-here"');
+      }
+      throw new Error(errData.error && errData.error.message || 'API error ' + response.status);
+    }
+
+    var data = await response.json();
+    var text = data.content && data.content[0] && data.content[0].text;
+    if (!text) throw new Error('No response from AI');
+
+    // Parse JSON from response
+    var jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('Could not parse prescription data from image');
+    var rx = JSON.parse(jsonMatch[0]);
+
+    // Fill form
+    var fields = ['od_sph','od_cyl','od_axis','od_add','os_sph','os_cyl','os_axis','os_add'];
+    var keys   = ['od_sphere','od_cylinder','od_axis','od_add','os_sphere','os_cylinder','os_axis','os_add'];
+    fields.forEach(function(fid, i) {
+      var val = rx[keys[i]];
+      var el = document.getElementById(fid);
+      if (el) el.value = val !== null && val !== undefined ? val : '';
+    });
+
+    onRxChange();
+    status.textContent = '✓ Rx values extracted successfully!';
+    btn.textContent = 'Scan again';
+    btn.disabled = false;
+    setTimeout(function() { closeScanRx(); }, 1500);
+
+    // Track interaction
+    trackInteraction(null, 'ocr_scan');
+  } catch(e) {
+    errEl.textContent = e.message || 'Could not scan prescription. Please try again or enter manually.';
+    errEl.style.display = 'block';
+    status.textContent = '';
+    btn.textContent = 'Try again'; btn.disabled = false;
+  }
+}
+
+// ── Feature 6: ML interaction tracking ───────────────────────
+var _interactionQueue = [];
+var _interactionTimer = null;
+
+function trackInteraction(productId, type) {
+  if (!_userId) return;
+  _interactionQueue.push({ profile_id: _userId, product_id: productId, interaction_type: type });
+  clearTimeout(_interactionTimer);
+  _interactionTimer = setTimeout(flushInteractions, 2000);
+}
+
+async function flushInteractions() {
+  if (!_interactionQueue.length) return;
+  var batch = _interactionQueue.splice(0);
+  var validBatch = batch.filter(function(i){ return i.product_id !== null; });
+  if (validBatch.length === 0) return;
+  try {
+    await sb.from('product_interactions').insert(validBatch);
+  } catch(e) { /* silent — non-critical */ }
+}
+
+async function loadMlWeights() {
+  if (!_userId) return;
+  try {
+    // Load last 50 interactions to compute weights
+    var r = await sb.from('product_interactions').select('product_id,interaction_type')
+      .eq('profile_id', _userId).order('created_at', {ascending:false}).limit(50);
+    if (!r.data || r.data.length < 5) return; // need minimum data
+
+    // Compute product frequency map
+    var weights = {};
+    r.data.forEach(function(i) {
+      var w = i.interaction_type === 'compared' ? 3 : i.interaction_type === 'saved' ? 5 : 1;
+      weights[i.product_id] = (weights[i.product_id]||0) + w;
+    });
+    window._mlWeights = weights;
+  } catch(e) { /* silent */ }
+}
+
+function getMlBoost(product) {
+  if (!window._mlWeights || !window._mlWeights[product.id]) return 0;
+  var w = window._mlWeights[product.id];
+  return Math.min(10, Math.round(w / 2)); // max +10 boost from ML
+}
+
+// ── Realtime stock updates ────────────────────────────────────
+function setupRealtimeStock() {
+  sb.channel('products-stock')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'products' }, function(payload) {
+      // Update stock in _products array
+      var updated = payload.new;
+      var idx = _products.findIndex(function(p){ return p.id === updated.id; });
+      if (idx !== -1) {
+        _products[idx].in_stock = updated.in_stock;
+        // Update stock dot in results if overlay is open
+        var dot = document.querySelector('#pc-' + updated.id + ' .stock-dot');
+        if (dot) {
+          dot.className = 'stock-dot' + (updated.in_stock ? '' : ' out');
+          var stockText = dot.parentElement;
+          if (stockText) stockText.lastChild.textContent = updated.in_stock ? 'In stock' : 'Out of stock';
+        }
+      }
+    })
+    .subscribe();
 }
 
 async function signOutRx() {
